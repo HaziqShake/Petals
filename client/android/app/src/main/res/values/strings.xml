@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Petals</string>
+    <string name="title_activity_main">Petals</string>
+    <string name="package_name">com.hi.petals</string>
+    <string name="custom_url_scheme">com.hi.petals</string>
+    <string name="google_client_id">486180695746-ne1nqvn1egq1qbkoil8nvsm1b5qvo0in.apps.googleusercontent.com</string>
+</resources>

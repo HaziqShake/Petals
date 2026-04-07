@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: is the caller authenticated?
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Helper: is the caller a member of this specific room?
+    function isRoomMember(roomId) {
+      return isAuth() && 
+        request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.members;
+    }
+
+    // --- Rooms ---
+    match /rooms/{roomId} {
+      // Users can read room docs to check existence for joining
+      allow read: if isAuth();
+      
+      // Only creation and membership updates are allowed (max 2 members)
+      allow create: if isAuth() && request.resource.data.members.size() == 1;
+      allow update: if isAuth() && 
+        (request.auth.uid in resource.data.members) && 
+        request.resource.data.members.size() <= 2;
+
+      // --- Notes: Sub-collection of a room ---
+      match /notes/{noteId} {
+        allow read, write: if isRoomMember(roomId);
+      }
+    }
+
+    // --- User Profiles ---
+    match /users/{uid} {
+      allow read: if isAuth();
+      allow write: if isAuth() && request.auth.uid == uid;
+      
+      match /stickers/{stickerId} {
+        allow read, write: if isAuth() && request.auth.uid == uid;
+      }
+    }
+  }
+}
