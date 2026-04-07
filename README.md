@@ -7,15 +7,13 @@
     <img src="https://img.shields.io/badge/React-19-61dafb?style=flat-square&logo=react" alt="React" />
     <img src="https://img.shields.io/badge/Capacitor-8-119eff?style=flat-square&logo=capacitor" alt="Capacitor" />
   </p>
-  <br />
-  <a href="https://github.com/YOUR_USERNAME/YOUR_REPO/releases/latest">Download the latest version (apk)</a>
 </div>
 
 ---
 
 ### What is Petals?
 
-I built Petals because I wanted a space that was just for me and one other person. Not a group chat, not a shared Google Doc, just a quiet little notebook that two people can write in together.
+I built Petals because I wanted a space that recorded my story with my S/O
 
 You create a room, share the invite code with your partner, and that's it. From there you have a shared notebook where you can leave notes for each other, pin photos like Polaroids on the page, and see when the other person is writing. It's simple on purpose.
 
@@ -76,7 +74,7 @@ firestore.rules  Production Firestore security rules
 storage.rules    Storage rules (writes disabled, base64 pipeline)
 ```
 
-### Some decisions I made along the way
+### Some decisions I made (because I have a potato phone and am dirt poor)
 
 - **No cloud storage for photos.** I compress images locally using Canvas and store them as base64 directly in Firestore. Firebase Storage is paid and was causing upload failures on Android, so I cut it out entirely. Everything stays on the free tier this way.
 - **No animation libraries.** All transitions are plain CSS, kept under 200ms. I didn't want the overhead of Framer Motion or GSAP for what amounts to a few fades and slides.
@@ -86,5 +84,5 @@ storage.rules    Storage rules (writes disabled, base64 pipeline)
 ---
 
 <div align="center">
-  <sub>Built for people who want a small, quiet, private corner of the internet.</sub>
+  <sub>Built for lovers.</sub>
 </div>
