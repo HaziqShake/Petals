@@ -34,7 +34,7 @@ If you want to run this yourself, you'll need [Node.js](https://nodejs.org/) (v1
 
 ```bash
 # Clone and install
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
+git clone https://github.com/HaziqShake/Petals.git
 cd YOUR_REPO/client
 npm install
 
