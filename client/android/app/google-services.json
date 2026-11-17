@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "486180695746",
+    "project_id": "petals-app-hi",
+    "storage_bucket": "petals-app-hi.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:486180695746:android:4fcea4b3227e95adce555b",
+        "android_client_info": {
+          "package_name": "com.hi.petals"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "486180695746-u9o7r1neashabpuq23hi25dk215ojn2a.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hi.petals",
+            "certificate_hash": "bbef0f26a118e524890db53c8d7f50e1a62c0226"
+          }
+        },
+        {
+          "client_id": "486180695746-ne1nqvn1egq1qbkoil8nvsm1b5qvo0in.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA5K-V03Lx8oJ70uzLOeDyDzlJheJr8qW8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "486180695746-ne1nqvn1egq1qbkoil8nvsm1b5qvo0in.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
