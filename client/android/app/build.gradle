@@ -33,7 +33,26 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Stable test signing: CI runners generate a fresh debug keystore
+    // on every run, so each test APK had a different signature and
+    // Android refused to install one over another ("App not installed").
+    // This committed test-only keystore gives every CI build the same
+    // signature, so updates install over older test builds.
+    // TEST ONLY - never use this keystore for a production release.
+    signingConfigs {
+        testDebug {
+            storeFile file('petals-test.keystore')
+            storePassword 'petals-test-123'
+            keyAlias 'petals-test'
+            keyPassword 'petals-test-123'
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.testDebug
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
