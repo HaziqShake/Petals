@@ -8,6 +8,7 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
+import android.util.Log;
 import android.util.Size;
 
 import com.getcapacitor.JSArray;
@@ -106,8 +107,30 @@ public class PetalsMediaPlugin extends Plugin {
         if (limit <= 0 || limit > 200) limit = 60;
         try {
             List<MediaItem> items = new ArrayList<>();
-            items.addAll(queryMedia(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image", limit));
-            items.addAll(queryMedia(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "video", limit));
+            // One collection failing must not hide the other, but if BOTH
+            // fail the caller must hear about it: an empty list would make
+            // the sheet claim there are no photos on the device, which is
+            // a lie when the query itself broke. (The old code put
+            // "LIMIT n" in the sort order, which some devices reject with
+            // "Invalid token LIMIT", and swallowed it into an empty list.)
+            Exception imageError = null;
+            Exception videoError = null;
+            try {
+                items.addAll(queryMedia(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image"));
+            } catch (Exception e) {
+                imageError = e;
+                Log.e("PetalsMedia", "images query failed", e);
+            }
+            try {
+                items.addAll(queryMedia(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "video"));
+            } catch (Exception e) {
+                videoError = e;
+                Log.e("PetalsMedia", "videos query failed", e);
+            }
+            if (items.isEmpty() && imageError != null && videoError != null) {
+                call.reject("Could not read media: " + imageError.getMessage());
+                return;
+            }
             Collections.sort(items, (a, b) -> Long.compare(b.dateAdded, a.dateAdded));
             if (items.size() > limit) items = items.subList(0, limit);
 
@@ -137,7 +160,11 @@ public class PetalsMediaPlugin extends Plugin {
         }
     }
 
-    private List<MediaItem> queryMedia(Uri collection, String mediaType, int limit) {
+    // Plain ORDER BY only: no LIMIT in the sort string. Some devices
+    // (notably Samsung) reject "LIMIT" there with "Invalid token LIMIT",
+    // which used to be swallowed into an empty list. The caller caps
+    // the merged list to the requested limit instead.
+    private List<MediaItem> queryMedia(Uri collection, String mediaType) {
         List<MediaItem> items = new ArrayList<>();
         String[] projection = {
             MediaStore.MediaColumns._ID,
@@ -146,10 +173,9 @@ public class PetalsMediaPlugin extends Plugin {
             MediaStore.MediaColumns.DATE_ADDED,
             MediaStore.MediaColumns.WIDTH,
             MediaStore.MediaColumns.HEIGHT,
-            MediaStore.MediaColumns.SIZE,
             MediaStore.MediaColumns.DURATION
         };
-        String sort = MediaStore.MediaColumns.DATE_ADDED + " DESC LIMIT " + limit;
+        String sort = MediaStore.MediaColumns.DATE_ADDED + " DESC";
         ContentResolver resolver = getContext().getContentResolver();
         try (Cursor cursor = resolver.query(collection, projection, null, null, sort)) {
             if (cursor == null) return items;
@@ -173,8 +199,6 @@ public class PetalsMediaPlugin extends Plugin {
                 item.uri = ContentUris.withAppendedId(collection, item.id);
                 items.add(item);
             }
-        } catch (Exception ignored) {
-            // One collection failing must not kill the other.
         }
         return items;
     }

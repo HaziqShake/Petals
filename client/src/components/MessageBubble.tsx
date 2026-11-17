@@ -25,6 +25,7 @@ import { getDownloadUrl } from '../utils/b2Storage';
 import { saveUrlToGallery } from '../utils/mediaStore';
 import { getReactionCounts, getMyReaction, QUICK_REACTIONS, REACTION_GRID, firstEmoji } from '../utils/reactions';
 import { hapticLight, hapticMedium, hapticSelection } from '../utils/haptics';
+import { EyeIcon, HeartIcon } from './Icons';
 
 export interface BubbleProps {
   message: ChatMessage;
@@ -240,7 +241,7 @@ function MessageBubbleInner({ message: m, mine, currentUid, partnerReadAt, partn
           <span style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Viewed once</span>
         ) : m.isViewOnce ? (
           <div style={{ width: '100%', aspectRatio: '4 / 3', borderRadius: 16, background: 'var(--tag-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, border: '1px dashed var(--rule)' }}>
-            <span style={{ fontSize: 28 }}>👁️</span>
+            <EyeIcon size={28} color="var(--ink-muted)" />
             <span style={{ fontSize: 13, fontWeight: 600 }}>View once {m.mediaType === 'video' ? 'video' : 'photo'}</span>
             <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Tap to view, it disappears after</span>
           </div>
@@ -265,9 +266,9 @@ function MessageBubbleInner({ message: m, mine, currentUid, partnerReadAt, partn
         {/* Double-tap heart burst, centre of the bubble. */}
         {burstKey > 0 && (
           <div key={burstKey} aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5 }}>
-            <span className="heart-burst" style={{ fontSize: 56, lineHeight: 1 }}>❤️</span>
+            <span className="heart-burst" style={{ lineHeight: 1, display: 'flex' }}><HeartIcon size={56} color="#EA596E" fill="#EA596E" /></span>
             {BURST_PARTICLES.map((p, i) => (
-              <span key={i} className="heart-float" style={{ left: p.left, animationDelay: p.delay, fontSize: p.size }}>❤️</span>
+              <span key={i} className="heart-float" style={{ left: p.left, animationDelay: p.delay, display: 'flex' }}><HeartIcon size={p.size} color="#EA596E" fill="#EA596E" /></span>
             ))}
           </div>
         )}

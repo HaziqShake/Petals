@@ -16,7 +16,7 @@ import { useAllMessages } from '../hooks/useMessages';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { PullToRefreshIndicator } from '../components/PullToRefreshIndicator';
 import { SkeletonPhotoCard } from '../components/SkeletonCard';
-import { CameraIcon, DownloadIcon } from '../components/Icons';
+import { CameraIcon, DownloadIcon, PlayIcon } from '../components/Icons';
 import Lightbox from '../components/Lightbox';
 import { useCachedUrl } from '../hooks/useCachedUrl';
 import { saveUrlToGallery } from '../utils/mediaStore';
@@ -268,7 +268,7 @@ export default function PhotosPage() {
         {p.mediaType === 'video' ? (
           <>
             <CachedImg src={p.thumbUrl ?? p.url} alt="Video" storagePath={p.thumbPath ?? p.storagePath} />
-            <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>▶</span>
+            <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.6))' }}><PlayIcon size={22} color="#fff" /></span>
             {p.durationSeconds ? (
               <span style={{ position: 'absolute', right: 6, bottom: 6, fontSize: 11, color: '#fff', background: 'rgba(0,0,0,0.6)', borderRadius: 8, padding: '1px 6px' }}>{formatDuration(p.durationSeconds)}</span>
             ) : null}

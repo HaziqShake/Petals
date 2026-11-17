@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import type { StickerPlacement } from '../../../shared/types';
 import { BUILT_IN_STICKERS } from '../assets/stickers/stickerData';
 import { normaliseSticker, getNotebookZoom, screenDeltaToLogical, moveNormalised } from '../utils/canvasCoords';
+import { CloseIcon } from './Icons';
 
 interface Props {
   stickers: StickerPlacement[];
@@ -69,7 +70,7 @@ function StickerItem({
       )}
       {selected && (
         <>
-          <button className="delete-btn" onPointerDown={(e) => { e.stopPropagation(); onDelete(); }}>✕</button>
+          <button className="delete-btn" onPointerDown={(e) => { e.stopPropagation(); onDelete(); }}><CloseIcon size={14} /></button>
           <div className="resize-handle" onPointerDown={(e) => onResizeDown(e, s)} onPointerMove={onResizeMove} onPointerUp={onPointerUp} />
           <div className="rotate-handle" onPointerDown={(e) => onRotateDown(e, s)} onPointerMove={onRotateMove} onPointerUp={onPointerUp} />
         </>

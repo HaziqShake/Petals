@@ -16,6 +16,7 @@ import {
   openInstallSettings,
   isNative,
 } from '../utils/updateCheck';
+import { CloseIcon } from './Icons';
 
 type Phase = 'idle' | 'downloading' | 'downloaded' | 'installing' | 'needs-permission' | 'error';
 
@@ -104,8 +105,8 @@ export default function UpdateBanner({ info, onDismiss }: { info: UpdateInfo; on
               Petals {info.latestVersion} is out. You are on {info.currentVersion}.
             </span>
           </div>
-          <button onClick={dismiss} aria-label="Dismiss update" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--ink-muted)' }}>
-            ✕
+          <button onClick={dismiss} aria-label="Dismiss update" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <CloseIcon size={16} />
           </button>
         </div>
 

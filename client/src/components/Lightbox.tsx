@@ -3,7 +3,7 @@ import { fetchVideoCached, fetchBlobCached } from '../utils/localStore';
 import { getDownloadUrl } from '../utils/b2Storage';
 import { shouldAutoDownload } from '../utils/mediaStore';
 import { saveUrlToGallery } from '../utils/mediaStore';
-import { DownloadIcon } from './Icons';
+import { CloseIcon, DownloadIcon } from './Icons';
 
 interface Props {
   url: string;
@@ -95,7 +95,7 @@ export default function Lightbox({ url, onClose, mediaType, isViewOnce, mediaId,
           {saved ? 'Saved to gallery' : 'Save failed, try again'}
         </span>
       )}
-      <button className="lightbox-close" onClick={onClose} aria-label="Close">✕</button>
+      <button className="lightbox-close" onClick={onClose} aria-label="Close"><CloseIcon size={20} /></button>
     </div>
   );
 }

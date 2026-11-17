@@ -19,6 +19,7 @@
 //   which shows the preview sheet with Send / View once.
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { hapticSuccess } from '../utils/haptics';
+import { CloseIcon, PlusIcon } from './Icons';
 
 interface Props {
   onSendText: (text: string) => void;
@@ -86,7 +87,7 @@ export default function ChatInput({ onSendText, onPickMedia, onTyping, uploadPct
         </>
       )}
       <div style={{ display: 'flex', gap: 8, padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', alignItems: 'flex-end' }}>
-        <button className="toolbar-btn" onClick={() => setShowAttach((v) => !v)} aria-label="Attach photo, video or camera" style={{ flexShrink: 0, width: 36, height: 36, fontSize: 20, transition: 'transform 150ms ease-out' }}>{showAttach ? '×' : '+'}</button>
+        <button className="toolbar-btn" onClick={() => setShowAttach((v) => !v)} aria-label="Attach photo, video or camera" style={{ flexShrink: 0, width: 36, height: 36, transition: 'transform 150ms ease-out', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{showAttach ? <CloseIcon size={20} /> : <PlusIcon size={20} />}</button>
         <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleFile} />
         <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFile} />
         <input

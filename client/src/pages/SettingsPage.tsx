@@ -9,6 +9,7 @@ import { formatBytes } from '../utils/imageCompressor';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContext';
 import { useRoom } from '../hooks/useRoom';
+import { CheckIcon, DotIcon, MoonIcon, PetalIcon, SunIcon } from '../components/Icons';
 
 export default function SettingsPage({
   update,
@@ -99,11 +100,11 @@ export default function SettingsPage({
         <div className="settings-row">
           <span className="settings-row-label">Accent color</span>
           <div className="theme-toggle">
-            <button className={`theme-btn ${theme === 'pink' ? 'active' : ''}`} onClick={() => setTheme('pink')}>
-              🌸 Pink
+            <button className={`theme-btn ${theme === 'pink' ? 'active' : ''}`} onClick={() => setTheme('pink')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <PetalIcon size={16} /> Pink
             </button>
-            <button className={`theme-btn ${theme === 'blue' ? 'active' : ''}`} onClick={() => setTheme('blue')}>
-              💙 Blue
+            <button className={`theme-btn ${theme === 'blue' ? 'active' : ''}`} onClick={() => setTheme('blue')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <DotIcon size={14} color="#3B82F6" /> Blue
             </button>
           </div>
         </div>
@@ -111,11 +112,11 @@ export default function SettingsPage({
         <div className="settings-row">
           <span className="settings-row-label">Appearance</span>
           <div className="theme-toggle">
-            <button className={`theme-btn ${!isDarkMode ? 'active' : ''}`} onClick={() => setDarkMode(false)}>
-              ☀️ Light
+            <button className={`theme-btn ${!isDarkMode ? 'active' : ''}`} onClick={() => setDarkMode(false)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <SunIcon size={16} /> Light
             </button>
-            <button className={`theme-btn ${isDarkMode ? 'active' : ''}`} onClick={() => setDarkMode(true)}>
-              🌙 Dark
+            <button className={`theme-btn ${isDarkMode ? 'active' : ''}`} onClick={() => setDarkMode(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <MoonIcon size={16} /> Dark
             </button>
           </div>
         </div>
@@ -148,8 +149,8 @@ export default function SettingsPage({
             <span className="settings-row-label">Room invite code</span>
             <div className="room-code">{roomId}</div>
             <RoomQr code={roomId} />
-            <button className="btn-ghost" style={{ width: '100%' }} onClick={copyRoom}>
-              {copied ? '✓ Copied!' : 'Copy code'}
+            <button className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={copyRoom}>
+              {copied ? (<><CheckIcon size={16} /> Copied!</>) : 'Copy code'}
             </button>
             <p style={{ fontSize: 12, color: 'var(--ink-muted)', textAlign: 'center' }}>
               Share this with your partner to invite them.

@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import type { Photo } from '../../../shared/types';
 import { getPhotoTilt } from '../utils/imageUtils';
 import { normalisePhoto, getNotebookZoom, screenDeltaToLogical, moveNormalised } from '../utils/canvasCoords';
+import { CloseIcon } from './Icons';
 
 interface Props {
   photo: Photo;
@@ -230,7 +231,7 @@ export default function Polaroid({ photo, onTap, onUpdate, onDelete }: Props) {
       )}
       {selected && (
         <>
-          <button className="delete-btn" onPointerDown={(e) => { e.stopPropagation(); onDelete(); }}>✕</button>
+          <button className="delete-btn" onPointerDown={(e) => { e.stopPropagation(); onDelete(); }}><CloseIcon size={14} /></button>
           <div
             className="resize-handle"
             onPointerDown={onResizePointerDown}

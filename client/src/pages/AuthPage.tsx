@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useRoom } from '../hooks/useRoom';
 import { useAppContext } from '../context/AppContext';
-import { PetalIcon } from '../components/Icons';
+import { CheckIcon, CloseIcon, PetalIcon } from '../components/Icons';
 import { useUserRooms } from '../hooks/useUserRooms';
 import type { Room } from '../../../shared/types';
 import RoomQr from '../components/RoomQr';
@@ -186,10 +186,10 @@ export default function AuthPage() {
                     </div>
                     <button 
                       onClick={(e) => handleDeleteRoom(e, r.id)}
-                      style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 18, cursor: 'pointer', padding: 4 }}
+                      style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       aria-label="Delete room"
                     >
-                      ✕
+                      <CloseIcon size={18} />
                     </button>
                   </div>
                 ))}
@@ -215,8 +215,8 @@ export default function AuthPage() {
         <div className="auth-card" style={{ alignItems: 'center', gap: 20 }}>
           <div className="room-code">{generatedCode}</div>
           <RoomQr code={generatedCode} />
-          <button className="btn-ghost" onClick={copyCode} style={{ width: '100%' }}>
-            {copied ? '✓ Copied!' : 'Copy code'}
+          <button className="btn-ghost" onClick={copyCode} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            {copied ? (<><CheckIcon size={16} /> Copied!</>) : 'Copy code'}
           </button>
           <p style={{ fontSize: 12, color: 'var(--ink-muted)', textAlign: 'center' }}>
             Once your partner joins, your shared notebook will open.
