@@ -20,6 +20,8 @@ import StickerCanvas from '../components/StickerCanvas';
 import Polaroid from '../components/Polaroid';
 import Lightbox from '../components/Lightbox';
 import StickerPicker from '../components/StickerPicker';
+import MediaPickerSheet from '../components/MediaPickerSheet';
+import { isNativePickerAvailable } from '../utils/mediaPicker';
 
 interface Props {
   noteId: string;
@@ -40,6 +42,8 @@ export default function NoteEditorPage({ noteId, onBack, roomIdOverride }: Props
   // as view once. Paste inserts directly, as a normal photo.
   const [pendingPhoto, setPendingPhoto] = useState<{ file: File; previewUrl: string } | null>(null);
   const [pendingViewOnce, setPendingViewOnce] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  const pickerCameraRef = useRef<HTMLInputElement>(null);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const isAdmin = isAdminEmail(user?.email);
@@ -355,7 +359,7 @@ export default function NoteEditorPage({ noteId, onBack, roomIdOverride }: Props
       <div className="editor-toolbar">
         <button
           className="toolbar-btn"
-          onClick={() => fileRef.current?.click()}
+          onClick={() => { if (isNativePickerAvailable()) setShowPicker(true); else fileRef.current?.click(); }}
           aria-label="Add photo"
           disabled={uploading}
         >
@@ -379,7 +383,17 @@ export default function NoteEditorPage({ noteId, onBack, roomIdOverride }: Props
         {uploadPct !== null && <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{uploadPct}%</span>}
         {uploadError && <span style={{ fontSize: 12, color: 'var(--accent)' }}>{uploadError}</span>}
         <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoInsert} />
+        <input ref={pickerCameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handlePhotoInsert} />
       </div>
+
+      {showPicker && (
+        <MediaPickerSheet
+          onPick={(file) => { setShowPicker(false); setPendingPhoto({ file, previewUrl: URL.createObjectURL(file) }); }}
+          onClose={() => setShowPicker(false)}
+          onFallbackGallery={() => { setShowPicker(false); fileRef.current?.click(); }}
+          onTakePhoto={() => { setShowPicker(false); pickerCameraRef.current?.click(); }}
+        />
+      )}
 
       {pendingPhoto && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => { URL.revokeObjectURL(pendingPhoto.previewUrl); setPendingPhoto(null); setPendingViewOnce(false); }}>

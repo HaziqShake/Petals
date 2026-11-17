@@ -8,10 +8,11 @@
 //   plus a grid plus a free any-emoji input. One reaction per user,
 //   same emoji again removes it, a different one replaces it.
 // - Swipe right (partner) / left (mine) over 60px to reply.
-// - No disappearing messages in this app. View-once is images only:
-//   once the recipient has opened it, viewedBy is non-empty and nobody
-//   in the app sees it again. An unviewed view-once photo shows only a
-//   placeholder tile, never its thumbnail, and it cannot be saved.
+// - No disappearing messages in this app. View-once is photos and
+//   videos: once the recipient has opened it, viewedBy is non-empty
+//   and nobody in the app sees it again. An unviewed view-once item
+//   shows only a placeholder tile, never its thumbnail, and it cannot
+//   be saved.
 // - Mobile layout: bubbles are 78% max width with Instagram-style
 //   corner radii, media bubbles have no padding so the photo is
 //   full-bleed, and the meta row is just time + Seen/Sending. Reply
@@ -237,10 +238,10 @@ function MessageBubbleInner({ message: m, mine, currentUid, partnerReadAt, partn
           <span style={{ fontSize: 15, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</span>
         ) : blocked ? (
           <span style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Viewed once</span>
-        ) : m.isViewOnce && m.mediaType === 'image' ? (
+        ) : m.isViewOnce ? (
           <div style={{ width: '100%', aspectRatio: '4 / 3', borderRadius: 16, background: 'var(--tag-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, border: '1px dashed var(--rule)' }}>
             <span style={{ fontSize: 28 }}>👁️</span>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>View once photo</span>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>View once {m.mediaType === 'video' ? 'video' : 'photo'}</span>
             <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Tap to view, it disappears after</span>
           </div>
         ) : m.mediaUrl ? m.mediaType === 'video' ? (
@@ -248,7 +249,7 @@ function MessageBubbleInner({ message: m, mine, currentUid, partnerReadAt, partn
         ) : (
           <img src={cachedThumb} alt="" loading="lazy" style={{ width: '100%', borderRadius: 16, cursor: 'pointer', display: 'block' }} />
         ) : null}
-        {m.isViewOnce && !blocked && !m.deletedAt && m.mediaType === 'image' && <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>View once</div>}
+        {m.isViewOnce && !blocked && !m.deletedAt && <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>View once</div>}
         {m.serverStored && m.localExpired && !blocked && !m.deletedAt && <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>Stored on server - tap to download again</div>}
         {m.mediaUrl && !blocked && !m.deletedAt && !m.isViewOnce && (
           <button onClick={(e) => { e.stopPropagation(); void handleSave(); }} style={{ background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 12, color: 'var(--accent)', cursor: 'pointer', fontSize: 11, padding: '3px 10px', marginTop: 6 }}>

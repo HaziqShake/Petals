@@ -21,6 +21,7 @@ import { markMediaRedownloaded } from '../utils/mediaArchive';
 import Lightbox from '../components/Lightbox';
 import MessageBubble from '../components/MessageBubble';
 import ChatInput from '../components/ChatInput';
+import MediaPickerSheet from '../components/MediaPickerSheet';
 import type { ChatMessage } from '../../../shared/types';
 
 interface Optimistic extends ChatMessage { temp?: boolean; failed?: boolean }
@@ -37,10 +38,13 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   // Instagram-style view-once: no sticky checkbox. Picking a photo
-  // opens a preview sheet where that one photo can be sent as view
-  // once. Videos never get the option (images only).
+  // or video opens a preview sheet where that one item can be sent
+  // as view once. Photos and videos both get the option.
   const [pendingMedia, setPendingMedia] = useState<{ file: File; previewUrl: string; isVideo: boolean } | null>(null);
   const [pendingViewOnce, setPendingViewOnce] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  const fallbackFileRef = useRef<HTMLInputElement>(null);
+  const pickerCameraRef = useRef<HTMLInputElement>(null);
   const [showNewPill, setShowNewPill] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
@@ -171,8 +175,8 @@ export default function ChatPage() {
           const thumb = job.isVideo ? null : null;
           const { done } = uploadStoredMediaResumable(job.roomId, '__chat__', job.id, blob, thumb, job.isVideo, () => undefined);
           const up = await done;
-          // View-once is images only: a queued video never becomes view-once.
-          const queuedViewOnce = job.isViewOnce && !job.isVideo;
+          // View-once applies to photos and videos alike.
+          const queuedViewOnce = job.isViewOnce;
           await sendMessage({ senderUid: user.uid, senderName: user.displayName ?? 'Petal', type: queuedViewOnce ? 'view-once' : job.isVideo ? 'video' : 'photo', mediaUrl: up.storageUrl, thumbUrl: up.thumbUrl, storagePath: up.storagePath, thumbPath: up.thumbPath, mediaType: job.isVideo ? 'video' : 'image', isViewOnce: queuedViewOnce, viewedBy: [], replyTo: null });
           await dequeueMedia(job.id);
         } catch { /* stays queued, retries next time online */ }
@@ -197,16 +201,17 @@ export default function ChatPage() {
     if (!isOnline()) {
       try {
         const blob = file.type.startsWith('video/') ? file : (await compressPhoto(file)).full;
-        await enqueueMedia({ id: uid(), kind: 'chat-media', roomId, fileName: file.name, fileType: file.type, isVideo: file.type.startsWith('video/'), isViewOnce: viewOnceFlag && !file.type.startsWith('video/'), createdAt: Date.now() }, blob);
+        await enqueueMedia({ id: uid(), kind: 'chat-media', roomId, fileName: file.name, fileType: file.type, isVideo: file.type.startsWith('video/'), isViewOnce: viewOnceFlag, createdAt: Date.now() }, blob);
         setError('You are offline. This will send when you are back online.');
         return;
       } catch { setError('Could not queue that file. Try again when online.'); return; }
     }
     const isVideo = file.type.startsWith('video/');
-    // View-once is images only, and any photo is compressed in-app
-    // until it fits, so no photo is ever rejected for size. Uploads
-    // work on WiFi and on mobile data alike, no WiFi-only gate.
-    const viewOncePhoto = viewOnceFlag && !isVideo;
+    // View-once applies to photos and videos alike, chosen per item
+    // in the preview sheet. Any photo is compressed in-app until it
+    // fits, so no photo is ever rejected for size. Uploads work on
+    // WiFi and on mobile data alike, no WiFi-only gate.
+    const viewOncePhoto = viewOnceFlag;
     setError(null);
     setUploadPct(0);
     try {
@@ -219,10 +224,10 @@ export default function ChatPage() {
         const id = uid();
         const { done } = uploadStoredMediaResumable(roomId, '__chat__', id, file, poster, true, setUploadPct);
         const up = await done;
-        await saveLocalMedia(up.storageUrl, file, { kind: 'video', roomId, mediaId: id, storagePath: up.storagePath, mediaType: 'video', isViewOnce: false });
+        await saveLocalMedia(up.storageUrl, file, { kind: 'video', roomId, mediaId: id, storagePath: up.storagePath, mediaType: 'video', isViewOnce: viewOncePhoto });
         await saveHiddenMedia(id, file, 'video/mp4').catch(() => undefined);
         if (up.thumbUrl && poster) await saveLocalMedia(up.thumbUrl, poster, { kind: 'thumb' });
-        sendOptimistic({ senderUid: user.uid, senderName: user.displayName ?? 'Petal', type: 'video', mediaUrl: up.storageUrl, thumbUrl: up.thumbUrl, storagePath: up.storagePath, thumbPath: up.thumbPath, mediaType: 'video', durationSeconds: Math.round(info.durationSeconds), isViewOnce: false, viewedBy: [], cachedBy: [user.uid], relayDeleted: false, replyTo: replyTo?.id ?? null });
+        sendOptimistic({ senderUid: user.uid, senderName: user.displayName ?? 'Petal', type: viewOncePhoto ? 'view-once' : 'video', mediaUrl: up.storageUrl, thumbUrl: up.thumbUrl, storagePath: up.storagePath, thumbPath: up.thumbPath, mediaType: 'video', durationSeconds: Math.round(info.durationSeconds), isViewOnce: viewOncePhoto, viewedBy: [], cachedBy: [user.uid], relayDeleted: false, replyTo: replyTo?.id ?? null });
       } else {
         const c = await compressPhoto(file);
         const id = uid();
@@ -334,16 +339,14 @@ export default function ChatPage() {
           )}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
             <button onClick={() => { URL.revokeObjectURL(pendingMedia.previewUrl); setPendingMedia(null); setPendingViewOnce(false); }} style={{ background: 'var(--tag-bg)', border: 'none', borderRadius: 20, padding: '10px 16px', fontSize: 14, cursor: 'pointer', color: 'var(--ink)' }}>Cancel</button>
-            {!pendingMedia.isVideo && (
-              <button
-                onClick={() => setPendingViewOnce((v) => !v)}
-                aria-pressed={pendingViewOnce}
-                style={{ background: pendingViewOnce ? 'var(--accent)' : 'var(--tag-bg)', color: pendingViewOnce ? '#fff' : 'var(--ink)', border: 'none', borderRadius: 20, padding: '10px 16px', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                <span style={{ width: 20, height: 20, borderRadius: '50%', border: `1.5px solid ${pendingViewOnce ? '#fff' : 'var(--ink)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>1</span>
-                View once
-              </button>
-            )}
+            <button
+              onClick={() => setPendingViewOnce((v) => !v)}
+              aria-pressed={pendingViewOnce}
+              style={{ background: pendingViewOnce ? 'var(--accent)' : 'var(--tag-bg)', color: pendingViewOnce ? '#fff' : 'var(--ink)', border: 'none', borderRadius: 20, padding: '10px 16px', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <span style={{ width: 20, height: 20, borderRadius: '50%', border: `1.5px solid ${pendingViewOnce ? '#fff' : 'var(--ink)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>1</span>
+              View once
+            </button>
             <button
               className="btn-primary"
               onClick={() => { const { file } = pendingMedia; const vo = pendingViewOnce; URL.revokeObjectURL(pendingMedia.previewUrl); setPendingMedia(null); setPendingViewOnce(false); void handleSendMedia(file, vo); }}
@@ -352,7 +355,17 @@ export default function ChatPage() {
           </div>
         </div>
       )}
-      <ChatInput onSendText={handleSendText} onPickMedia={handlePickMedia} onTyping={handleTyping} uploadPct={uploadPct} />
+      {showPicker && (
+        <MediaPickerSheet
+          onPick={(file) => { setShowPicker(false); handlePickMedia(file); }}
+          onClose={() => setShowPicker(false)}
+          onFallbackGallery={() => { setShowPicker(false); fallbackFileRef.current?.click(); }}
+          onTakePhoto={() => { setShowPicker(false); pickerCameraRef.current?.click(); }}
+        />
+      )}
+      <input ref={fallbackFileRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (e.target) e.target.value = ''; if (f) handlePickMedia(f); }} />
+      <input ref={pickerCameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (e.target) e.target.value = ''; if (f) handlePickMedia(f); }} />
+      <ChatInput onSendText={handleSendText} onPickMedia={handlePickMedia} onTyping={handleTyping} uploadPct={uploadPct} onOpenPicker={() => setShowPicker(true)} />
       {lightbox && <Lightbox url={lightbox.url} mediaId={lightbox.mediaId} mediaType={lightbox.mediaType} isViewOnce={lightbox.isViewOnce} archived={lightbox.archived} storagePath={lightbox.storagePath} onClose={() => setLightbox(null)} />}
     </div>
   );

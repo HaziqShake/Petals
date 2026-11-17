@@ -25,9 +25,10 @@ interface Props {
   onPickMedia: (file: File) => void;
   onTyping: (typing: boolean) => void;
   uploadPct: number | null;
+  onOpenPicker?: () => void;
 }
 
-export default function ChatInput({ onSendText, onPickMedia, onTyping, uploadPct }: Props) {
+export default function ChatInput({ onSendText, onPickMedia, onTyping, uploadPct, onOpenPicker }: Props) {
   const [text, setText] = useState('');
   const [showAttach, setShowAttach] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -78,6 +79,7 @@ export default function ChatInput({ onSendText, onPickMedia, onTyping, uploadPct
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowAttach(false)} />
           <div style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 12, zIndex: 50, background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 16, padding: 6, boxShadow: 'var(--shadow)', width: 220, display: 'flex', flexDirection: 'column' }}>
+            {onOpenPicker && <button onClick={() => { setShowAttach(false); onOpenPicker(); }} style={{ background: 'none', border: 'none', textAlign: 'left', padding: '10px 12px', fontSize: 14, color: 'var(--ink)', cursor: 'pointer', borderRadius: 10 }}>Browse photos and videos</button>}
             <button onClick={() => fileRef.current?.click()} style={{ background: 'none', border: 'none', textAlign: 'left', padding: '10px 12px', fontSize: 14, color: 'var(--ink)', cursor: 'pointer', borderRadius: 10 }}>Photo or video from gallery</button>
             <button onClick={() => cameraRef.current?.click()} style={{ background: 'none', border: 'none', textAlign: 'left', padding: '10px 12px', fontSize: 14, color: 'var(--ink)', cursor: 'pointer', borderRadius: 10 }}>Take a photo</button>
           </div>
