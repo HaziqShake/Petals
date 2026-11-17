@@ -40,6 +40,9 @@
 
     <!-- Camera and Storage Permissions -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- In-app camera video clips record audio; the WebView asks for
+         this at runtime when getUserMedia runs. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Read/Write Storage for older Android versions -->

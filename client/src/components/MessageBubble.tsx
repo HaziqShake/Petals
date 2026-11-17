@@ -1,4 +1,7 @@
-// Memoized chat bubble, Instagram-like, rebuilt for mobile.
+// Memoized chat bubble content, Instagram-like, rebuilt for mobile.
+// This renders INSIDE a Chatscope kit Message (Message.CustomContent):
+// the kit owns the row, direction, grouping position and avatar, and
+// this component owns the bubble chrome and every interaction.
 // Memoized so typing in the input (which lives in ChatInput, with its
 // own state) never re-renders the whole message list.
 // - Double-tap to like: big heart burst in the centre, small heart on
@@ -13,11 +16,13 @@
 //   and nobody in the app sees it again. An unviewed view-once item
 //   shows only a placeholder tile, never its thumbnail, and it cannot
 //   be saved.
-// - Mobile layout: bubbles are 78% max width with Instagram-style
-//   corner radii, media bubbles have no padding so the photo is
-//   full-bleed, and the meta row is just time + Seen/Sending. Reply
-//   and Delete live only in the long-press picker, not under every
-//   bubble, which was the clutter on mobile.
+// - Instagram bubbles: sent is the purple-pink-orange gradient with
+//   white text, received is light grey (#EFEFEF, #262626 in dark).
+//   Consecutive bubbles from one sender share flattened adjoining
+//   corners via the `position` prop from the kit grouping. The kit
+//   caps the row at 78% width; media is full-bleed inside the bubble.
+//   Seen/Sent live in the chat footer under the last message, not in
+//   the bubble; only Sending / Not sent / Retry show here.
 import { memo, useRef, useState, useEffect, useCallback } from 'react';
 import type { ChatMessage } from '../../../shared/types';
 import { useCachedUrl } from '../hooks/useCachedUrl';
@@ -27,16 +32,18 @@ import { getReactionCounts, getMyReaction, QUICK_REACTIONS, REACTION_GRID, first
 import { hapticLight, hapticMedium, hapticSelection } from '../utils/haptics';
 import { EyeIcon, HeartIcon } from './Icons';
 
+export type BubblePosition = 'single' | 'first' | 'normal' | 'last';
+
 export interface BubbleProps {
   message: ChatMessage;
   mine: boolean;
   isAdmin: boolean;
   currentUid: string | null;
-  partnerReadAt: number | null;
   partnerName?: string;
   repliedTo?: ChatMessage;
   sending?: boolean;
   failed?: boolean;
+  position?: BubblePosition;
   onOpenMedia: (m: ChatMessage) => void;
   onReply: (m: ChatMessage) => void;
   onDelete: (m: ChatMessage) => void;
@@ -54,7 +61,7 @@ const BURST_PARTICLES = [
   { left: '55%', delay: '100ms', size: 16 },
 ];
 
-function MessageBubbleInner({ message: m, mine, currentUid, partnerReadAt, partnerName, repliedTo, sending, failed, onOpenMedia, onReply, onDelete, onToggleReaction, onRetry }: BubbleProps) {
+function MessageBubbleInner({ message: m, mine, currentUid, partnerName, repliedTo, sending, failed, position = 'single', onOpenMedia, onReply, onDelete, onToggleReaction, onRetry }: BubbleProps) {
   const cachedThumb = useCachedUrl(m.thumbUrl ?? m.mediaUrl, m.thumbPath ?? m.storagePath);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -87,8 +94,12 @@ function MessageBubbleInner({ message: m, mine, currentUid, partnerReadAt, partn
   // app sees the image again. The file stays in hidden app storage.
   const viewed = Boolean(m.isViewOnce && (m.viewedBy ?? []).length > 0);
   const blocked = viewed;
-  const read = mine && partnerReadAt !== null && partnerReadAt >= m.createdAt;
   const counts = getReactionCounts(m.reactions);
+  // Instagram grouped corners: the corners facing the next bubble in
+  // the group flatten, the tail corner on the sender side stays small.
+  const bubbleRadius = mine
+    ? (position === 'single' || position === 'first' ? '22px 22px 4px 22px' : '22px 4px 4px 22px')
+    : (position === 'single' || position === 'first' ? '22px 22px 22px 4px' : '4px 22px 22px 4px');
   const myReaction = getMyReaction(m.reactions, currentUid);
   const isTemp = m.id.startsWith('temp-');
   const canReact = !m.deletedAt && !isTemp && !sending;
@@ -211,7 +222,7 @@ function MessageBubbleInner({ message: m, mine, currentUid, partnerReadAt, partn
   return (
     <div
       className="msg-pop"
-      style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: isMedia ? 260 : '78%', width: isMedia ? '78%' : undefined, position: 'relative', touchAction: 'pan-y' }}
+      style={{ width: isMedia ? 260 : undefined, maxWidth: '100%', position: 'relative', touchAction: 'pan-y' }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -222,11 +233,11 @@ function MessageBubbleInner({ message: m, mine, currentUid, partnerReadAt, partn
       <div
         onClick={handleTap}
         style={{
-          background: isMedia ? 'transparent' : mine ? 'var(--primary)' : 'var(--surface)',
-          color: 'var(--ink)',
-          borderRadius: mine ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+          background: isMedia ? 'transparent' : mine ? 'linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)' : 'var(--ig-received)',
+          color: mine ? '#fff' : 'var(--ink)',
+          borderRadius: bubbleRadius,
           padding: isMedia ? 0 : '10px 12px',
-          boxShadow: isMedia ? 'none' : 'var(--shadow)',
+          boxShadow: 'none',
           opacity: sending ? 0.7 : 1,
           transition: 'opacity 150ms ease-out, transform 150ms ease-out',
           cursor: 'pointer',
@@ -257,11 +268,13 @@ function MessageBubbleInner({ message: m, mine, currentUid, partnerReadAt, partn
             {saved ? 'Saved to gallery' : saveError ? 'Save failed, try again' : 'Save'}
           </button>
         )}
-        <div style={{ display: 'flex', gap: 6, marginTop: isMedia ? 4 : 6, fontSize: 11, color: 'var(--ink-muted)', alignItems: 'center', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-          <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-          {mine && !m.deletedAt && <span>{sending ? 'Sending…' : failed ? 'Not sent' : read ? 'Seen' : 'Sent'}</span>}
-          {failed && onRetry && <button onClick={(e) => { e.stopPropagation(); onRetry(m); }} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 11 }}>Retry</button>}
-        </div>
+        {(sending || failed) && (
+          <div style={{ display: 'flex', gap: 6, marginTop: isMedia ? 4 : 6, fontSize: 11, color: mine ? 'rgba(255,255,255,0.85)' : 'var(--ink-muted)', alignItems: 'center', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+            {sending && <span>Sending…</span>}
+            {failed && <span>Not sent</span>}
+            {failed && onRetry && <button onClick={(e) => { e.stopPropagation(); onRetry(m); }} style={{ background: 'none', border: 'none', color: mine ? '#fff' : 'var(--accent)', cursor: 'pointer', fontSize: 11, textDecoration: 'underline' }}>Retry</button>}
+          </div>
+        )}
 
         {/* Double-tap heart burst, centre of the bubble. */}
         {burstKey > 0 && (

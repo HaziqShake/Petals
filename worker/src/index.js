@@ -217,15 +217,15 @@ async function isRoomMember(env, roomId, caller, callerToken) {
 // Firebase Storage paths):
 //   rooms/{roomId}/notes/{noteId}/photos/{photoId}.webp
 //   rooms/{roomId}/notes/{noteId}/photos/{photoId}-thumb.webp
-//   rooms/{roomId}/notes/{noteId}/photos/{photoId}.mp4
-//   rooms/{roomId}/__chat__/{messageId}.webp | .mp4
-//   rooms/{roomId}/archived/{mediaId}.webp | .mp4
+//   rooms/{roomId}/notes/{noteId}/photos/{photoId}.mp4 | .webm
+//   rooms/{roomId}/__chat__/{messageId}.webp | .mp4 | .webm
+//   rooms/{roomId}/archived/{mediaId}.webp | .mp4 | .webm
 // ---------------------------------------------------------------------------
 
 const KEY_PATTERNS = [
-  /^rooms\/([^/]+)\/notes\/([^/]+)\/photos\/([^/]+?)(-thumb)?\.(webp|mp4)$/,
-  /^rooms\/([^/]+)\/__chat__\/([^/]+)\.(webp|mp4)$/,
-  /^rooms\/([^/]+)\/archived\/([^/]+)\.(webp|mp4)$/,
+  /^rooms\/([^/]+)\/notes\/([^/]+)\/photos\/([^/]+?)(-thumb)?\.(webp|mp4|webm)$/,
+  /^rooms\/([^/]+)\/__chat__\/([^/]+)\.(webp|mp4|webm)$/,
+  /^rooms\/([^/]+)\/archived\/([^/]+)\.(webp|mp4|webm)$/,
 ];
 
 function parseKey(key) {
@@ -235,14 +235,16 @@ function parseKey(key) {
     if (!m) continue;
     const roomId = m[1];
     const isThumb = key.includes('/photos/') && key.endsWith('-thumb.webp');
-    const ext = key.endsWith('.webp') ? 'webp' : 'mp4';
+    // .webm is what the in-app camera records on most Android builds
+    // (MediaRecorder); gallery clips are usually .mp4.
+    const ext = key.endsWith('.webp') ? 'webp' : key.endsWith('.webm') ? 'webm' : 'mp4';
     return { roomId, isThumb, ext };
   }
   return null;
 }
 
 function sizeCap(parsed) {
-  if (parsed.ext === 'mp4') return MAX_VIDEO_BYTES;
+  if (parsed.ext === 'mp4' || parsed.ext === 'webm') return MAX_VIDEO_BYTES;
   if (parsed.isThumb) return MAX_THUMB_BYTES;
   return MAX_FULL_PHOTO_BYTES;
 }
@@ -250,6 +252,7 @@ function sizeCap(parsed) {
 function contentTypeMatches(contentType, parsed) {
   if (parsed.ext === 'webp') return contentType === 'image/webp';
   if (parsed.ext === 'mp4') return contentType === 'video/mp4';
+  if (parsed.ext === 'webm') return contentType === 'video/webm';
   return false;
 }
 

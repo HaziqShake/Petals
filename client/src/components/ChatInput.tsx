@@ -1,39 +1,35 @@
-// Chat input, rebuilt for mobile, Instagram-like.
+// Chat input, Instagram-style, mobile first.
 // Own local state, so every keystroke re-renders only this component,
 // never the message list. Typing is debounced: it tells the parent at
 // most once per second while typing, and clears 3 seconds after the
 // last keystroke.
 //
-// Layout on mobile: one clean row - attach (+), a rounded text pill
-// that is the biggest thing in the row, and a round send button.
-// The camera lives inside the + quick menu (Take a photo), not as
-// its own button in the row, so the message bar gets the width.
-// There is no WiFi-only checkbox
-// and no view-once checkbox here: uploads work on WiFi and on mobile
-// data alike, and view-once is chosen per photo in the preview sheet
-// that opens after picking it, like Instagram, not as a sticky toggle.
-// - Camera: a second hidden file input with capture="environment"
-//   opens the phone camera directly on Android, no new plugin needed.
-//   The gallery input has no capture attribute, so it opens the picker.
-// - Picking a file does not send it: onPickMedia hands it to ChatPage,
-//   which shows the preview sheet with Send / View once.
-import { useState, useRef, useEffect, useCallback } from 'react';
+// Instagram input bar, left to right: a blue gradient circular camera
+// button (opens the in-app camera), the Message... pill which is the
+// biggest thing in the row, a gallery button (opens the media picker
+// sheet), and a mic icon. The mic is decorative only: voice messages
+// do not exist in Petals, so tapping it does nothing and there is no
+// fake recording UI. When the pill has text, the mic is replaced by a
+// send button (paper plane). Every touch target is at least 44px, with
+// safe-area padding at the bottom.
+// No WiFi-only checkbox and no view-once checkbox here: uploads work
+// on WiFi and on mobile data alike, and view-once is chosen per photo
+// in the preview sheet that opens after picking it, like Instagram,
+// not as a sticky toggle.
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { hapticSuccess } from '../utils/haptics';
-import { CloseIcon, PlusIcon } from './Icons';
+import { CameraIcon, ImageIcon, MicIcon, SendIcon } from './Icons';
 
 interface Props {
   onSendText: (text: string) => void;
-  onPickMedia: (file: File) => void;
   onTyping: (typing: boolean) => void;
   uploadPct: number | null;
   onOpenPicker?: () => void;
+  onOpenCamera?: () => void;
 }
 
-export default function ChatInput({ onSendText, onPickMedia, onTyping, uploadPct, onOpenPicker }: Props) {
+export default function ChatInput({ onSendText, onTyping, uploadPct, onOpenPicker, onOpenCamera }: Props) {
   const [text, setText] = useState('');
-  const [showAttach, setShowAttach] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
   const lastTypingSent = useRef(0);
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -62,50 +58,48 @@ export default function ChatInput({ onSendText, onPickMedia, onTyping, uploadPct
     onTyping(false);
   }, [text, onSendText, onTyping]);
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (e.target) e.target.value = '';
-    setShowAttach(false);
-    if (file) onPickMedia(file);
-  };
+  const hasText = text.trim().length > 0;
 
   return (
-    <div style={{ position: 'relative', background: 'var(--bg)' }}>
+    <div style={{ position: 'relative', background: 'var(--bg)', borderTop: '1px solid var(--rule)' }}>
       {uploadPct !== null && (
         <div style={{ height: 3, background: 'var(--tag-bg)', borderRadius: 2, overflow: 'hidden', margin: '0 12px' }}>
           <div style={{ height: '100%', width: `${uploadPct}%`, background: 'var(--accent)', borderRadius: 2, transition: 'width 200ms ease-out' }} />
         </div>
       )}
-      {showAttach && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowAttach(false)} />
-          <div style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 12, zIndex: 50, background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 16, padding: 6, boxShadow: 'var(--shadow)', width: 220, display: 'flex', flexDirection: 'column' }}>
-            {onOpenPicker && <button onClick={() => { setShowAttach(false); onOpenPicker(); }} style={{ background: 'none', border: 'none', textAlign: 'left', padding: '10px 12px', fontSize: 14, color: 'var(--ink)', cursor: 'pointer', borderRadius: 10 }}>Browse photos and videos</button>}
-            <button onClick={() => fileRef.current?.click()} style={{ background: 'none', border: 'none', textAlign: 'left', padding: '10px 12px', fontSize: 14, color: 'var(--ink)', cursor: 'pointer', borderRadius: 10 }}>Photo or video from gallery</button>
-            <button onClick={() => cameraRef.current?.click()} style={{ background: 'none', border: 'none', textAlign: 'left', padding: '10px 12px', fontSize: 14, color: 'var(--ink)', cursor: 'pointer', borderRadius: 10 }}>Take a photo</button>
-          </div>
-        </>
-      )}
-      <div style={{ display: 'flex', gap: 8, padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', alignItems: 'flex-end' }}>
-        <button className="toolbar-btn" onClick={() => setShowAttach((v) => !v)} aria-label="Attach photo, video or camera" style={{ flexShrink: 0, width: 36, height: 36, transition: 'transform 150ms ease-out', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{showAttach ? <CloseIcon size={20} /> : <PlusIcon size={20} />}</button>
-        <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleFile} />
-        <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFile} />
+      <div style={{ display: 'flex', gap: 6, padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', alignItems: 'center' }}>
+        <button
+          onClick={() => onOpenCamera?.()}
+          aria-label="Open camera"
+          style={{ flexShrink: 0, width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'linear-gradient(135deg, #3797F0 0%, #5851DB 100%)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        ><CameraIcon size={22} color="#fff" /></button>
         <input
           className="text-input"
           value={text}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-          placeholder="Message…"
+          placeholder="Message..."
           aria-label="Message"
           style={{ flex: '1 1 0', minWidth: 0, borderRadius: 24, padding: '12px 18px', fontSize: 16, lineHeight: 1.4 }}
         />
         <button
-          className="send-pop"
-          onClick={submit}
-          disabled={!text.trim()}
-          aria-label="Send message"
-          style={{ flexShrink: 0, width: 40, height: 40, borderRadius: '50%', border: 'none', background: text.trim() ? 'var(--accent)' : 'var(--tag-bg)', color: text.trim() ? '#fff' : 'var(--ink-muted)', fontSize: 18, cursor: text.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 150ms ease-out, background 150ms ease-out' }}
-        >↑</button>
+          onClick={() => onOpenPicker?.()}
+          aria-label="Send a photo or video"
+          style={{ flexShrink: 0, width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'none', color: 'var(--ink)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        ><ImageIcon size={22} /></button>
+        {hasText ? (
+          <button
+            className="send-pop"
+            onClick={submit}
+            aria-label="Send message"
+            style={{ flexShrink: 0, width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 150ms ease-out' }}
+          ><SendIcon size={20} color="#fff" /></button>
+        ) : (
+          <button
+            aria-label="Voice message (not available)"
+            style={{ flexShrink: 0, width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'none', color: 'var(--ink-muted)', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          ><MicIcon size={20} /></button>
+        )}
       </div>
     </div>
   );

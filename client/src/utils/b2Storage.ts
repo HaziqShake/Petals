@@ -67,10 +67,17 @@ async function callSigner(path: string, body: Record<string, unknown>): Promise<
   return res.json();
 }
 
-export function photoStoragePaths(roomId: string, noteId: string, photoId: string, isVideo: boolean) {
+// Video extension follows the real mime type: the in-app camera
+// records video/webm on most Android builds (MediaRecorder), while
+// gallery clips are usually video/mp4. The Worker accepts both.
+export function videoExtension(contentType?: string): 'mp4' | 'webm' {
+  return contentType?.includes('webm') ? 'webm' : 'mp4';
+}
+
+export function photoStoragePaths(roomId: string, noteId: string, photoId: string, isVideo: boolean, contentType?: string) {
   const base = `rooms/${roomId}/notes/${noteId}/photos/${photoId}`;
   return {
-    fullPath: isVideo ? `${base}.mp4` : `${base}.webp`,
+    fullPath: isVideo ? `${base}.${videoExtension(contentType)}` : `${base}.webp`,
     thumbPath: `${base}-thumb.webp`,
   };
 }
@@ -102,9 +109,10 @@ export async function uploadStoredMedia(
   full: Blob,
   thumb: Blob | null,
   isVideo: boolean,
+  contentType?: string,
 ): Promise<{ storageUrl: string; thumbUrl?: string; storagePath: string; thumbPath?: string }> {
-  const { fullPath, thumbPath } = photoStoragePaths(roomId, noteId, photoId, isVideo);
-  const fullType = isVideo ? 'video/mp4' : 'image/webp';
+  const { fullPath, thumbPath } = photoStoragePaths(roomId, noteId, photoId, isVideo, contentType);
+  const fullType = isVideo ? (contentType ?? 'video/mp4') : 'image/webp';
   const fullUploadUrl = await signUpload(roomId, fullPath, fullType, full.size);
   await putToPresignedUrl(fullUploadUrl, full, fullType);
   const storageUrl = await getDownloadUrl(fullPath);
@@ -131,8 +139,8 @@ export async function deleteStoredMedia(storagePath?: string, thumbPath?: string
 // the explicit deletePhoto/deleteMessage paths, which delete the current
 // storagePath. The caller must verify the returned URL/size before
 // deleting any local copy.
-export function archiveStoragePath(roomId: string, mediaId: string, isVideo: boolean): string {
-  return `rooms/${roomId}/archived/${mediaId}${isVideo ? '.mp4' : '.webp'}`;
+export function archiveStoragePath(roomId: string, mediaId: string, isVideo: boolean, contentType?: string): string {
+  return `rooms/${roomId}/archived/${mediaId}${isVideo ? `.${videoExtension(contentType)}` : '.webp'}`;
 }
 
 export async function uploadArchiveMedia(
@@ -140,11 +148,12 @@ export async function uploadArchiveMedia(
   mediaId: string,
   blob: Blob,
   isVideo: boolean,
+  contentType?: string,
 ): Promise<{ storageUrl: string; storagePath: string }> {
-  const storagePath = archiveStoragePath(roomId, mediaId, isVideo);
-  const contentType = isVideo ? 'video/mp4' : 'image/webp';
-  const uploadUrl = await signUpload(roomId, storagePath, contentType, blob.size);
-  await putToPresignedUrl(uploadUrl, blob, contentType);
+  const storagePath = archiveStoragePath(roomId, mediaId, isVideo, contentType);
+  const resolvedType = isVideo ? (contentType ?? 'video/mp4') : 'image/webp';
+  const uploadUrl = await signUpload(roomId, storagePath, resolvedType, blob.size);
+  await putToPresignedUrl(uploadUrl, blob, resolvedType);
   // Verify the upload actually landed before the caller deletes the
   // local copy: HEAD the stored object via a fresh presigned HEAD URL
   // and check its stored size matches the uploaded blob. (Firebase
@@ -229,9 +238,10 @@ export function uploadStoredMediaResumable(
   thumb: Blob | null,
   isVideo: boolean,
   onProgress: (percent: number) => void,
+  contentType?: string,
 ): ResumableUpload {
-  const { fullPath, thumbPath } = photoStoragePaths(roomId, noteId, photoId, isVideo);
-  const fullType = isVideo ? 'video/mp4' : 'image/webp';
+  const { fullPath, thumbPath } = photoStoragePaths(roomId, noteId, photoId, isVideo, contentType);
+  const fullType = isVideo ? (contentType ?? 'video/mp4') : 'image/webp';
   let xhr: XMLHttpRequest | null = null;
   let state: 'running' | 'paused' | 'cancelled' | 'done' = 'running';
   let settled = false;

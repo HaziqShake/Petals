@@ -1,0 +1,238 @@
+/* Chatscope kit restyled to look like Instagram, mobile first.
+ *
+ * The kit owns the list, scroll, header and typing chrome. Petals owns
+ * the data (Firebase) and the bubble content (MessageBubble). The kit's
+ * default look is a desktop blue chat, so this file overrides it:
+ * gradient sent bubbles live in MessageBubble, but the kit's own
+ * wrappers must get out of the way first (transparent content boxes,
+ * no padding, no borders), and the list/header/separator/typing
+ * chrome is restyled to Instagram's mobile thread.
+ *
+ * Mobile first: everything here is designed at 390px. Touch targets
+ * are at least 44px. Nothing relies on hover or a wide layout.
+ * Load order: the kit styles load first, this file after, so these
+ * rules win at equal specificity.
+ */
+
+.petals-chat-kit,
+.petals-chat-kit .cs-main-container,
+.petals-chat-kit .cs-chat-container,
+.petals-chat-kit .cs-message-list,
+.petals-chat-kit .cs-message,
+.petals-chat-kit .cs-message__content,
+.petals-chat-kit .cs-conversation-header {
+  font-family: 'DM Sans', sans-serif;
+}
+
+/* Main container: no desktop border, fills the tab. */
+.petals-chat-kit .cs-main-container {
+  border: none;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.petals-chat-kit .cs-chat-container {
+  flex: 1;
+  min-height: 0;
+  border: none;
+  background: var(--bg);
+}
+
+/* Header: Instagram thread header. Back is always visible on mobile. */
+.petals-chat-kit .cs-conversation-header {
+  background: var(--bg);
+  border-bottom: 1px solid var(--rule);
+  padding: 8px 8px 8px 4px;
+  min-height: 60px;
+  flex-shrink: 0;
+}
+
+.petals-chat-kit .cs-conversation-header__back {
+  display: flex;
+  margin-right: 0;
+}
+
+.petals-chat-kit .cs-conversation-header__back button {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+}
+
+.petals-chat-kit .cs-conversation-header__avatar {
+  width: 40px;
+  height: 40px;
+  margin-right: 10px;
+}
+
+.petals-chat-kit .cs-conversation-header__avatar .cs-avatar {
+  width: 40px;
+  height: 40px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.petals-chat-kit .cs-conversation-header__content .cs-conversation-header__user-name {
+  background: transparent;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.petals-chat-kit .cs-conversation-header__content .cs-conversation-header__info {
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.petals-chat-kit .cs-conversation-header__actions {
+  margin-left: 4px;
+}
+
+.petals-chat-kit .cs-conversation-header__actions .cs-button {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+}
+
+/* Message list: mobile padding, thumb-friendly width. */
+.petals-chat-kit .cs-message-list {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.petals-chat-kit .cs-message-list__scroll-wrapper {
+  padding: 12px 12px 8px;
+}
+
+.petals-chat-kit .cs-message-list__scroll-wrapper > .cs-message,
+.petals-chat-kit .cs-message-list__scroll-wrapper > .cs-message-group {
+  max-width: 78%;
+}
+
+/* The kit's bubble box must disappear: MessageBubble draws the bubble.
+   The direction and message classes are part of the selector on
+   purpose: the kit's position rules
+   (.cs-message.cs-message--outgoing.cs-message--first and friends)
+   carry four classes, so anything shorter loses to them and the
+   kit's blue shows through around the Petals bubble. */
+.petals-chat-kit .cs-message.cs-message--incoming .cs-message__content,
+.petals-chat-kit .cs-message.cs-message--outgoing .cs-message__content {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+  font-size: 15px;
+}
+
+.petals-chat-kit .cs-message {
+  overflow: visible;
+  margin: 2px 0 0 0;
+}
+
+/* A new group (different sender, or a new day) gets breathing room. */
+.petals-chat-kit .cs-message.petals-group-start {
+  margin-top: 10px;
+}
+
+/* Avatar beside the last received bubble of a group, Instagram size. */
+.petals-chat-kit .cs-message__avatar {
+  width: 28px;
+  margin: 0 8px 0 0;
+}
+
+.petals-chat-kit .cs-message__avatar .cs-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Footer under a bubble: time / status, small and muted. */
+.petals-chat-kit .cs-message__footer {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.petals-chat-kit .cs-message--outgoing .cs-message__footer {
+  justify-content: flex-end;
+}
+
+/* Date separator: centered pill, no divider lines, no white bar
+   behind it (the kit default paints the separator white). */
+.petals-chat-kit .cs-message-separator {
+  justify-content: center;
+  margin: 10px 0 2px;
+  background: transparent;
+}
+
+.petals-chat-kit .cs-message-separator::before,
+.petals-chat-kit .cs-message-separator::after {
+  display: none;
+}
+
+/* Typing indicator: three dots in a bubble, sits at the list bottom. */
+.petals-chat-kit .cs-message-list .cs-typing-indicator,
+.petals-chat-kit .cs-typing-indicator {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: transparent;
+  padding: 8px 12px;
+  height: auto;
+  line-height: 1;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.petals-chat-kit .cs-typing-indicator__dot {
+  background-color: var(--ink-muted);
+  width: 6px;
+  height: 6px;
+}
+
+/* Load-more spinner at the top of the list. */
+.petals-chat-kit .cs-message-list__loading-more {
+  background: var(--bg);
+  color: var(--ink-muted);
+}
+
+/* Hide the desktop scrollbar rails on touch layouts. */
+@media (hover: none) {
+  .petals-chat-kit .cs-message-list .ps__rail-y,
+  .petals-chat-kit .cs-message-list .ps__rail-x {
+    display: none;
+  }
+}
+
+/* Partner avatar: the kit's Avatar renders a broken <img> when no
+   src is given, so Petals passes an initials circle as its child. */
+.petals-avatar-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+}
+.cs-message__avatar .petals-avatar-initial {
+  font-size: 12px;
+}

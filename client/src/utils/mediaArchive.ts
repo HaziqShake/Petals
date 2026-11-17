@@ -146,11 +146,11 @@ export async function archiveExpiredBlobs(retentionMs: number = ARCHIVE_RETENTIO
         const blob = await getBlob(meta.url);
         if (!blob || blob.size === 0) { result.skipped += 1; continue; }
         const isVideo = meta.mediaType === 'video' || meta.kind === 'video';
-        const up = await uploadArchiveMedia(target.roomId, target.mediaId, blob, isVideo);
+        const up = await uploadArchiveMedia(target.roomId, target.mediaId, blob, isVideo, isVideo ? (blob.type || 'video/mp4') : undefined);
         // Upload verified by uploadArchiveMedia (download URL + size
         // match). Only now is it safe to delete the local copy.
         await deleteLocalBlob(meta.url);
-        await deleteHiddenMedia(target.mediaId, isVideo ? 'video/mp4' : 'image/webp').catch(() => undefined);
+        await deleteHiddenMedia(target.mediaId, isVideo ? (blob.type || 'video/mp4') : 'image/webp').catch(() => undefined);
         const archivedAt = Date.now();
         await updateDoc(docRef(target), {
           serverStored: true,

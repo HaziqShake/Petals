@@ -57,6 +57,8 @@ body.theme-pink {
   --tag-bg:      #FFE4ED;
   --user-pink:   #350e2b;
   --user-blue:   #0b1a30;
+  /* Instagram received bubble grey (light mode). */
+  --ig-received: #EFEFEF;
   color-scheme: light;
 }
 
@@ -76,6 +78,8 @@ body.theme-blue {
   --tag-bg:      #DDE7FF;
   --user-pink:   #350e2b;
   --user-blue:   #0b1a30;
+  /* Instagram received bubble grey (light mode). */
+  --ig-received: #EFEFEF;
   color-scheme: light;
 }
 
@@ -93,6 +97,8 @@ body.dark-theme {
   --tag-bg:      #262629;
   --user-pink:   #F4A7B9;
   --user-blue:   #A7C4F4;
+  /* Instagram received bubble grey (dark mode). */
+  --ig-received: #262626;
   color-scheme: dark;
 }
 

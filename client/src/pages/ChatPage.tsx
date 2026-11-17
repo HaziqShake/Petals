@@ -1,16 +1,41 @@
-// Chat page, built from scratch for the test release.
-// Optimistic send: a message shows immediately with Sending, then
-// confirms to Sent/Read when Firestore accepts it, or shows Retry on
-// failure. The list is memoized bubbles, the input keeps its own state,
-// so typing never re-renders the list. Pull down at the top loads older
-// messages for real. Typing comes from room.chatTyping, read receipts
-// from room.lastReadAt.
-import { useState, useRef, useEffect, useCallback } from 'react';
+// Chat page, rebuilt on the open-source Chatscope Chat UI Kit (MIT),
+// styled to look like Instagram, mobile first.
+//
+// What the kit owns: MainContainer / ChatContainer layout, the
+// ConversationHeader, the MessageList (scroll, sticky auto-scroll to
+// the bottom, load-more on reaching the top, typing indicator slot),
+// Message rows (direction, grouping position, avatar slot) and the
+// date separators. What Petals still owns: the data. Firebase
+// (hooks/useMessages.ts) is the source of truth; Firestore messages
+// are mapped into the kit's message models for display, and sending
+// still goes through the existing path (optimistic send, offline
+// queue, typing, read receipts, reactions, view-once).
+//
+// Instagram thread: gradient sent bubbles, grey received bubbles,
+// tight grouped corners with an avatar on the last received bubble
+// of a group, centered date pills, Seen under the last message only,
+// and the Instagram input bar (blue camera circle, Message... pill,
+// gallery, mic) below the list. The custom input bar is NOT the
+// kit's MessageInput: ChatContainer only renders the kit's own
+// input, so the Petals input bar sits below the kit container in
+// the page column, which is also where the reply bar, error line
+// and media preview sheet live.
+import { useState, useRef, useEffect, useCallback, Fragment } from 'react';
+import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
+import '../styles/chatscope-ig.css';
+import {
+  MainContainer,
+  ChatContainer,
+  ConversationHeader,
+  MessageList,
+  Message,
+  MessageSeparator,
+  TypingIndicator,
+  Avatar,
+} from '@chatscope/chat-ui-kit-react';
 import { useAppContext } from '../context/AppContext';
 import { useMessages, type NewMessage } from '../hooks/useMessages';
 import { useRoomData } from '../hooks/useRoom';
-import { usePullToRefresh } from '../hooks/usePullToRefresh';
-import { PullToRefreshIndicator } from '../components/PullToRefreshIndicator';
 import { isAdminEmail } from '../utils/admin';
 import { compressPhoto, getVideoInfo, makeVideoPoster, VIDEO_MAX_SECONDS, VIDEO_MAX_MB, VIDEO_MAX_WIDTH, VIDEO_MAX_HEIGHT } from '../utils/imageCompressor';
 import { uploadStoredMediaResumable } from '../utils/b2Storage';
@@ -19,14 +44,29 @@ import { enqueueMedia, listQueuedJobs, getQueuedBlob, dequeueMedia, isOnline, on
 import { saveHiddenMedia } from '../utils/mediaStore';
 import { markMediaRedownloaded } from '../utils/mediaArchive';
 import Lightbox from '../components/Lightbox';
-import MessageBubble from '../components/MessageBubble';
+import MessageBubble, { type BubblePosition } from '../components/MessageBubble';
 import ChatInput from '../components/ChatInput';
 import MediaPickerSheet from '../components/MediaPickerSheet';
+import CameraScreen from '../components/CameraScreen';
+import { ArrowLeftIcon, SearchIcon } from '../components/Icons';
 import type { ChatMessage } from '../../../shared/types';
 
 interface Optimistic extends ChatMessage { temp?: boolean; failed?: boolean }
 
-export default function ChatPage() {
+interface Props {
+  onBack?: () => void;
+}
+
+function relativeActive(ts: number, now: number): string {
+  const diffMin = Math.max(0, Math.round((now - ts) / 60000));
+  if (diffMin < 1) return 'Active now';
+  if (diffMin < 60) return `Active ${diffMin}m ago`;
+  const diffH = Math.round(diffMin / 60);
+  if (diffH < 24) return `Active ${diffH}h ago`;
+  return `Active ${Math.round(diffH / 24)}d ago`;
+}
+
+export default function ChatPage({ onBack }: Props) {
   const { roomId, user } = useAppContext();
   const { messages, loading, hasMore, loadMore, sendMessage, markViewed, markCached, deleteMessage, markRoomRead, setTyping, toggleReaction } = useMessages(roomId);
   const room = useRoomData(roomId);
@@ -43,11 +83,12 @@ export default function ChatPage() {
   const [pendingMedia, setPendingMedia] = useState<{ file: File; previewUrl: string; isVideo: boolean } | null>(null);
   const [pendingViewOnce, setPendingViewOnce] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
   const fallbackFileRef = useRef<HTMLInputElement>(null);
-  const pickerCameraRef = useRef<HTMLInputElement>(null);
   const [showNewPill, setShowNewPill] = useState(false);
-  const listRef = useRef<HTMLDivElement>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const nearBottomRef = useRef(true);
+  const kitRootRef = useRef<HTMLDivElement>(null);
   const isAdmin = isAdminEmail(user?.email);
   const partnerUid = room?.members?.find((m) => m !== user?.uid) ?? null;
   const partnerTypingAt = partnerUid && room?.chatTyping ? room.chatTyping[partnerUid] ?? 0 : 0;
@@ -61,24 +102,16 @@ export default function ChatPage() {
   const partnerTyping = partnerTypingAt > 0 && nowTick - partnerTypingAt < 5000;
   const partnerReadAt = partnerUid && room?.lastReadAt ? room.lastReadAt[partnerUid] ?? null : null;
 
-  const { pullDist, isRefreshing, handlers } = usePullToRefresh(async () => { await loadMore(); });
-
-  const scrollToBottom = useCallback((smooth = true) => {
-    const el = listRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+  const scrollListToBottom = useCallback(() => {
+    const el = kitRootRef.current?.querySelector('.cs-message-list__scroll-wrapper') as HTMLElement | null;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    setShowNewPill(false);
   }, []);
 
-  const handleScroll = () => {
-    const el = listRef.current;
-    if (!el) return;
-    nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    if (nearBottomRef.current) setShowNewPill(false);
-  };
-
   useEffect(() => {
-    if (nearBottomRef.current) scrollToBottom(false);
+    if (nearBottomRef.current) setShowNewPill(false);
     else setShowNewPill(true);
-  }, [messages.length, optimistic.length, scrollToBottom]);
+  }, [messages.length, optimistic.length]);
 
   useEffect(() => {
     if (!roomId || !user) return;
@@ -162,6 +195,22 @@ export default function ChatPage() {
     void confirmSend(m.id, clean);
   }, [user, confirmSend]);
 
+  const handleLoadMore = useCallback(() => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    void loadMore().finally(() => setLoadingMore(false));
+  }, [hasMore, loadingMore, loadMore]);
+
+  const handleReachEnd = useCallback(() => {
+    nearBottomRef.current = true;
+    setShowNewPill(false);
+  }, []);
+
+  const handleReachStart = useCallback(() => {
+    nearBottomRef.current = false;
+    handleLoadMore();
+  }, [handleLoadMore]);
+
   // Flush queued media uploads when back online.
   useEffect(() => {
     if (!roomId || !user) return;
@@ -173,7 +222,8 @@ export default function ChatPage() {
         if (!blob) { await dequeueMedia(job.id); continue; }
         try {
           const thumb = job.isVideo ? null : null;
-          const { done } = uploadStoredMediaResumable(job.roomId, '__chat__', job.id, blob, thumb, job.isVideo, () => undefined);
+          const videoType = job.isVideo ? (job.fileType || 'video/mp4') : undefined;
+          const { done } = uploadStoredMediaResumable(job.roomId, '__chat__', job.id, blob, thumb, job.isVideo, () => undefined, videoType);
           const up = await done;
           // View-once applies to photos and videos alike.
           const queuedViewOnce = job.isViewOnce;
@@ -222,10 +272,13 @@ export default function ChatPage() {
         if (info.width > VIDEO_MAX_WIDTH || info.height > VIDEO_MAX_HEIGHT) { setError('Video is over 720p. Pick a smaller clip.'); return; }
         const poster = await makeVideoPoster(file);
         const id = uid();
-        const { done } = uploadStoredMediaResumable(roomId, '__chat__', id, file, poster, true, setUploadPct);
+        // Thread the real mime type: camera clips are often webm,
+        // gallery clips usually mp4. The key extension follows it.
+        const videoType = file.type || 'video/mp4';
+        const { done } = uploadStoredMediaResumable(roomId, '__chat__', id, file, poster, true, setUploadPct, videoType);
         const up = await done;
         await saveLocalMedia(up.storageUrl, file, { kind: 'video', roomId, mediaId: id, storagePath: up.storagePath, mediaType: 'video', isViewOnce: viewOncePhoto });
-        await saveHiddenMedia(id, file, 'video/mp4').catch(() => undefined);
+        await saveHiddenMedia(id, file, videoType).catch(() => undefined);
         if (up.thumbUrl && poster) await saveLocalMedia(up.thumbUrl, poster, { kind: 'thumb' });
         sendOptimistic({ senderUid: user.uid, senderName: user.displayName ?? 'Petal', type: viewOncePhoto ? 'view-once' : 'video', mediaUrl: up.storageUrl, thumbUrl: up.thumbUrl, storagePath: up.storagePath, thumbPath: up.thumbPath, mediaType: 'video', durationSeconds: Math.round(info.durationSeconds), isViewOnce: viewOncePhoto, viewedBy: [], cachedBy: [user.uid], relayDeleted: false, replyTo: replyTo?.id ?? null });
       } else {
@@ -284,52 +337,151 @@ export default function ChatPage() {
     return hay.includes(q);
   });
 
+  const headerInfo = partnerTyping
+    ? 'typing…'
+    : partnerReadAt !== null
+      ? relativeActive(partnerReadAt, nowTick)
+      : 'Petals chat';
+
+  const lastVisible = visible.length > 0 ? visible[visible.length - 1] : null;
+  const lastSeen = Boolean(
+    lastVisible && user && lastVisible.senderUid === user.uid && !lastVisible.deletedAt
+    && partnerReadAt !== null && partnerReadAt >= lastVisible.createdAt,
+  );
+
+  // Group position for Instagram's stacked corners: a group is a run
+  // of messages from one sender on one day.
+  const positionFor = (i: number): BubblePosition => {
+    const m = visible[i];
+    const prev = visible[i - 1];
+    const next = visible[i + 1];
+    const samePrev = Boolean(prev && prev.senderUid === m.senderUid && dayLabel(prev.createdAt) === dayLabel(m.createdAt));
+    const sameNext = Boolean(next && next.senderUid === m.senderUid && dayLabel(next.createdAt) === dayLabel(m.createdAt));
+    if (!samePrev && !sameNext) return 'single';
+    if (!samePrev) return 'first';
+    if (!sameNext) return 'last';
+    return 'normal';
+  };
+
   return (
     <div className="page" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 12px 8px', borderBottom: '1px solid var(--rule)', background: 'var(--bg)', position: 'sticky', top: 0, zIndex: 10 }}>
-        <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--primary)', color: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 600, flexShrink: 0, fontFamily: 'Caveat, cursive' }}>{partnerName.charAt(0).toUpperCase()}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 16, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{partnerName}</div>
-          <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{partnerTyping ? 'typing…' : 'Petals chat'}</div>
-        </div>
-        <button onClick={() => setShowSearch((v) => !v)} aria-label="Search chat" style={{ background: 'var(--tag-bg)', border: 'none', borderRadius: '50%', width: 36, height: 36, fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>⌕</button>
-      </div>
       {showSearch && (
-        <div style={{ padding: '8px 12px 4px' }}>
+        <div style={{ padding: '8px 12px 4px', background: 'var(--bg)' }}>
           <input className="text-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search messages, sender, date, photo or video…" aria-label="Search chat" autoFocus style={{ borderRadius: 20 }} />
           {q !== '' && <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 4 }}>{visible.length} match{visible.length === 1 ? '' : 'es'}{visible.length === 0 ? ' - try a sender name, a date like 17 Nov 2026, or photo / video' : ''}</div>}
         </div>
       )}
-      <div ref={listRef} onScroll={handleScroll} {...handlers} style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
-        <PullToRefreshIndicator pullDist={pullDist} isRefreshing={isRefreshing} threshold={70} />
-        {loading ? <p style={{ color: 'var(--ink-muted)', textAlign: 'center' }}>Loading…</p> : all.length === 0 ? (
-          <div className="empty-state"><p>Say hi to your partner.</p><p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Messages, photos and short clips live here. Notes stay in the notebook.</p></div>
-        ) : visible.length === 0 ? (
-          <div className="empty-state"><p>No matches for “{search}”.</p><p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Search matches message text, sender, date and photo or video. Viewed view-once items stay hidden.</p></div>
-        ) : (
-          <>
-            {hasMore && q === '' && <button className="btn-ghost" onClick={() => void loadMore()} style={{ alignSelf: 'center' }}>Load older messages</button>}
-            {visible.map((m, i) => {
-              const prev = visible[i - 1];
-              const showDay = !prev || dayLabel(prev.createdAt) !== dayLabel(m.createdAt);
-              return (
-                <div key={m.id} style={{ display: 'flex', flexDirection: 'column' }}>
-                  {showDay && <div style={{ alignSelf: 'center', fontSize: 11, color: 'var(--ink-muted)', background: 'var(--tag-bg)', borderRadius: 12, padding: '3px 10px', margin: '6px 0' }}>{dayLabel(m.createdAt)}</div>}
-                  <MessageBubble message={m} mine={m.senderUid === user?.uid} isAdmin={isAdmin} currentUid={user?.uid ?? null} partnerReadAt={partnerReadAt} partnerName={partnerName} repliedTo={m.replyTo ? messages.find((x) => x.id === m.replyTo) : undefined} sending={Boolean((m as Optimistic).temp && !(m as Optimistic).failed)} failed={Boolean((m as Optimistic).failed)} onOpenMedia={(msg) => void openMedia(msg)} onReply={setReplyTo} onDelete={(msg) => void deleteMessage(msg.id)} onToggleReaction={handleToggleReaction} onRetry={(msg) => handleRetry(msg)} />
+      <div ref={kitRootRef} className="petals-chat-kit" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <MainContainer>
+          <ChatContainer>
+            <ConversationHeader>
+              {onBack && (
+                <ConversationHeader.Back>
+                  <button onClick={onBack} aria-label="Back to notes" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ArrowLeftIcon size={24} />
+                  </button>
+                </ConversationHeader.Back>
+              )}
+              <Avatar name={partnerName}>
+                <span className="petals-avatar-initial">{partnerName.charAt(0).toUpperCase()}</span>
+              </Avatar>
+              <ConversationHeader.Content userName={partnerName} info={headerInfo} />
+              <ConversationHeader.Actions>
+                <button onClick={() => setShowSearch((v) => !v)} aria-label="Search chat" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <SearchIcon size={20} />
+                </button>
+              </ConversationHeader.Actions>
+            </ConversationHeader>
+            <MessageList
+              autoScrollToBottom
+              autoScrollToBottomOnMount
+              loading={loading}
+              loadingMore={loadingMore}
+              disableOnYReachWhenNoScroll
+              onYReachStart={handleReachStart}
+              onYReachEnd={handleReachEnd}
+              typingIndicator={partnerTyping ? <TypingIndicator content={`${partnerName} is typing`} /> : undefined}
+            >
+              {loading && all.length === 0 ? null : all.length === 0 ? (
+                <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--ink-muted)' }}>
+                  <p style={{ fontSize: 15, color: 'var(--ink)' }}>Say hi to your partner.</p>
+                  <p style={{ fontSize: 13, marginTop: 4 }}>Messages, photos and short clips live here. Notes stay in the notebook.</p>
                 </div>
-              );
-            })}
-            {partnerTyping && (
-              <div style={{ alignSelf: 'flex-start', background: 'var(--surface)', borderRadius: '18px 18px 18px 4px', padding: '10px 14px', boxShadow: 'var(--shadow)', display: 'flex', gap: 4, alignItems: 'center' }}>
-                <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
-              </div>
-            )}
-          </>
-        )}
+              ) : visible.length === 0 ? (
+                <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--ink-muted)' }}>
+                  <p style={{ fontSize: 15, color: 'var(--ink)' }}>No matches for &ldquo;{search}&rdquo;.</p>
+                  <p style={{ fontSize: 13, marginTop: 4 }}>Search matches message text, sender, date and photo or video. Viewed view-once items stay hidden.</p>
+                </div>
+              ) : (
+                visible.map((m, i) => {
+                  const prev = visible[i - 1];
+                  const showDay = !prev || dayLabel(prev.createdAt) !== dayLabel(m.createdAt);
+                  const mine = m.senderUid === user?.uid;
+                  const position = positionFor(i);
+                  const isGroupStart = position === 'single' || position === 'first';
+                  const showAvatar = !mine && (position === 'last' || position === 'single');
+                  const isLast = i === visible.length - 1;
+                  // Fragment, not a div: the kit finds the last message
+                  // with a direct-child DOM selector, so no wrapper
+                  // element may sit between the list and the Message.
+                  return (
+                    <Fragment key={m.id}>
+                      {showDay && (
+                        <MessageSeparator>
+                          <span style={{ fontSize: 11, color: 'var(--ink-muted)', background: 'var(--tag-bg)', borderRadius: 12, padding: '3px 10px' }}>{dayLabel(m.createdAt)}</span>
+                        </MessageSeparator>
+                      )}
+                      <Message
+                        model={{
+                          direction: mine ? 'outgoing' : 'incoming',
+                          position,
+                          sender: m.senderName,
+                          sentTime: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        }}
+                        avatarSpacer={!mine && !showAvatar}
+                        avatarPosition="bl"
+                        className={isGroupStart ? 'petals-group-start' : undefined}
+                      >
+                        {showAvatar && (
+                          <Avatar name={partnerName} size="sm">
+                            <span className="petals-avatar-initial">{partnerName.charAt(0).toUpperCase()}</span>
+                          </Avatar>
+                        )}
+                        <Message.CustomContent>
+                          <MessageBubble
+                            message={m}
+                            mine={mine}
+                            isAdmin={isAdmin}
+                            currentUid={user?.uid ?? null}
+                            partnerName={partnerName}
+                            repliedTo={m.replyTo ? messages.find((x) => x.id === m.replyTo) : undefined}
+                            sending={Boolean((m as Optimistic).temp && !(m as Optimistic).failed)}
+                            failed={Boolean((m as Optimistic).failed)}
+                            position={position}
+                            onOpenMedia={(msg) => void openMedia(msg)}
+                            onReply={setReplyTo}
+                            onDelete={(msg) => void deleteMessage(msg.id)}
+                            onToggleReaction={handleToggleReaction}
+                            onRetry={(msg) => handleRetry(msg)}
+                          />
+                        </Message.CustomContent>
+                        {isLast && lastSeen && (
+                          <Message.Footer>
+                            <span>Seen</span>
+                          </Message.Footer>
+                        )}
+                      </Message>
+                    </Fragment>
+                  );
+                })
+              )}
+            </MessageList>
+          </ChatContainer>
+        </MainContainer>
       </div>
-      {showNewPill && <button onClick={() => scrollToBottom(true)} style={{ position: 'absolute', bottom: 170, left: '50%', transform: 'translateX(-50%)', background: 'var(--primary)', border: 'none', borderRadius: 16, padding: '6px 14px', cursor: 'pointer', fontSize: 12 }}>New messages ↓</button>}
+      {showNewPill && <button onClick={scrollListToBottom} style={{ position: 'absolute', bottom: 170, left: '50%', transform: 'translateX(-50%)', background: 'var(--primary)', border: 'none', borderRadius: 16, padding: '6px 14px', cursor: 'pointer', fontSize: 12, zIndex: 20 }}>New messages</button>}
       {replyTo && <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', fontSize: 12, background: 'var(--tag-bg)', borderTop: '1px solid var(--rule)' }}><span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Replying to {replyTo.text || replyTo.type}</span><button onClick={() => setReplyTo(null)} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', flexShrink: 0 }}>Cancel</button></div>}
-      {error && <p style={{ color: 'var(--accent)', fontSize: 13, textAlign: 'center', padding: '4px 16px' }}>{error}</p>}
+      {error && <p style={{ color: 'var(--accent)', fontSize: 13, textAlign: 'center', padding: '4px 16px', background: 'var(--bg)' }}>{error}</p>}
       {pendingMedia && (
         <div style={{ borderTop: '1px solid var(--rule)', background: 'var(--surface)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
           {pendingMedia.isVideo ? (
@@ -360,12 +512,18 @@ export default function ChatPage() {
           onPick={(file) => { setShowPicker(false); handlePickMedia(file); }}
           onClose={() => setShowPicker(false)}
           onFallbackGallery={() => { setShowPicker(false); fallbackFileRef.current?.click(); }}
-          onTakePhoto={() => { setShowPicker(false); pickerCameraRef.current?.click(); }}
+          onTakePhoto={() => { setShowPicker(false); setShowCamera(true); }}
         />
       )}
       <input ref={fallbackFileRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (e.target) e.target.value = ''; if (f) handlePickMedia(f); }} />
-      <input ref={pickerCameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (e.target) e.target.value = ''; if (f) handlePickMedia(f); }} />
-      <ChatInput onSendText={handleSendText} onPickMedia={handlePickMedia} onTyping={handleTyping} uploadPct={uploadPct} onOpenPicker={() => setShowPicker(true)} />
+      {showCamera && (
+        <CameraScreen
+          onCapture={(file) => { setShowCamera(false); handlePickMedia(file); }}
+          onClose={() => setShowCamera(false)}
+          onOpenGallery={() => { setShowCamera(false); setShowPicker(true); }}
+        />
+      )}
+      <ChatInput onSendText={handleSendText} onTyping={handleTyping} uploadPct={uploadPct} onOpenPicker={() => setShowPicker(true)} onOpenCamera={() => setShowCamera(true)} />
       {lightbox && <Lightbox url={lightbox.url} mediaId={lightbox.mediaId} mediaType={lightbox.mediaType} isViewOnce={lightbox.isViewOnce} archived={lightbox.archived} storagePath={lightbox.storagePath} onClose={() => setLightbox(null)} />}
     </div>
   );

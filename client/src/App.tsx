@@ -223,7 +223,7 @@ function InnerApp() {
         {tab === 'notes' && <NotesPage onOpenNote={openNote} />}
         {tab === 'favourites' && <FavouritesPage onOpenNote={openNote} />}
         {tab === 'photos' && <PhotosPage />}
-        {tab === 'chat' && <ChatPage />}
+        {tab === 'chat' && <ChatPage onBack={() => setTab('notes')} />}
         {tab === 'settings' && <SettingsPage update={update} updateStatus={updateStatus} checkingUpdate={checkingUpdate} onCheckForUpdates={() => void manualCheckForUpdates()} onDismissUpdate={dismissUpdate} />}
         {tab === 'admin' && isAdmin && <AdminPage />}
       </Suspense>
