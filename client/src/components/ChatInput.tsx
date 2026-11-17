@@ -4,8 +4,11 @@
 // most once per second while typing, and clears 3 seconds after the
 // last keystroke.
 //
-// Layout on mobile: one clean row - attach (+), camera, a rounded
-// text pill, and a round send button. There is no WiFi-only checkbox
+// Layout on mobile: one clean row - attach (+), a rounded text pill
+// that is the biggest thing in the row, and a round send button.
+// The camera lives inside the + quick menu (Take a photo), not as
+// its own button in the row, so the message bar gets the width.
+// There is no WiFi-only checkbox
 // and no view-once checkbox here: uploads work on WiFi and on mobile
 // data alike, and view-once is chosen per photo in the preview sheet
 // that opens after picking it, like Instagram, not as a sticky toggle.
@@ -81,8 +84,7 @@ export default function ChatInput({ onSendText, onPickMedia, onTyping, uploadPct
         </>
       )}
       <div style={{ display: 'flex', gap: 8, padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', alignItems: 'flex-end' }}>
-        <button className="toolbar-btn" onClick={() => setShowAttach((v) => !v)} aria-label="Attach photo, video or camera" style={{ flexShrink: 0, fontSize: 20, transition: 'transform 150ms ease-out' }}>{showAttach ? '×' : '+'}</button>
-        <button className="toolbar-btn" onClick={() => cameraRef.current?.click()} aria-label="Take a photo" style={{ flexShrink: 0, fontSize: 16, transition: 'transform 150ms ease-out' }}>📷</button>
+        <button className="toolbar-btn" onClick={() => setShowAttach((v) => !v)} aria-label="Attach photo, video or camera" style={{ flexShrink: 0, width: 36, height: 36, fontSize: 20, transition: 'transform 150ms ease-out' }}>{showAttach ? '×' : '+'}</button>
         <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleFile} />
         <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFile} />
         <input
@@ -92,14 +94,14 @@ export default function ChatInput({ onSendText, onPickMedia, onTyping, uploadPct
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           placeholder="Message…"
           aria-label="Message"
-          style={{ flex: 1, minWidth: 0, borderRadius: 22, padding: '10px 16px', fontSize: 15, lineHeight: 1.4 }}
+          style={{ flex: '1 1 0', minWidth: 0, borderRadius: 24, padding: '12px 18px', fontSize: 16, lineHeight: 1.4 }}
         />
         <button
           className="send-pop"
           onClick={submit}
           disabled={!text.trim()}
           aria-label="Send message"
-          style={{ flexShrink: 0, width: 42, height: 42, borderRadius: '50%', border: 'none', background: text.trim() ? 'var(--accent)' : 'var(--tag-bg)', color: text.trim() ? '#fff' : 'var(--ink-muted)', fontSize: 18, cursor: text.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 150ms ease-out, background 150ms ease-out' }}
+          style={{ flexShrink: 0, width: 40, height: 40, borderRadius: '50%', border: 'none', background: text.trim() ? 'var(--accent)' : 'var(--tag-bg)', color: text.trim() ? '#fff' : 'var(--ink-muted)', fontSize: 18, cursor: text.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 150ms ease-out, background 150ms ease-out' }}
         >↑</button>
       </div>
     </div>
