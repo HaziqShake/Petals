@@ -38,3 +38,4 @@ lint.json
 lint_results.txt
 ts-errors.txt
 ts-errors-utf8.txt
+*.apk
