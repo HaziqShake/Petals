@@ -152,3 +152,11 @@ render, and old rooms still open.
 - The editor still uses `contentEditable` and raw HTML for note bodies; that was not rebuilt in this test release.
 - PWA manifest icons `icon-192.png` and `icon-512.png` are still missing from `client/public/`; add them for install to work properly.
 - Web view only: note text does not align with the ruled lines of the page on web. It is correct on mobile, so this is a known web-only cosmetic issue, do not treat it as a blocker.
+
+### APK / CI fixes (17 Nov 2026, tags test.2-test.6)
+- test.2 failed at npm ci: Vite 8 vs vite-plugin-pwa 1.2.0 peer conflict. Fix: npm ci --legacy-peer-deps + client/.npmrc.
+- test.3 failed at cap sync: Capacitor CLI requires Node >=22, CI used Node 20. Fix: Node 22.
+- test.4 failed at Gradle: invalid source release 21, CI used Java 17. Fix: Java 21.
+- test.5 built the APK (20.4 MB, com.hi.petals, 0.1.0-test.1) but gh-release failed 403 Resource not accessible by integration. Fix: permissions contents: write.
+- test.6 SUCCEEDED: Android release run 44061931069, release https://github.com/HaziqShake/Petals/releases/tag/v0.1.0-test.6, app-debug.apk 21,358,189 bytes. CI run still fails at lint (16 pre-existing errors), separate from the release build.
+- Worker live: https://petals-signer.titan-stream.workers.dev/health returns {"ok":true,"service":"petals-signer"}.
