@@ -1,4 +1,6 @@
-// In-app update banner. The whole update happens inside the app:
+// In-app update popup. Shown as a modal on app launch when a newer
+// release exists, and from Settings on a manual check. The whole
+// update happens inside the app:
 // Download downloads the APK asset inside the app with a progress
 // bar, then Install fires the Android install intent for the
 // downloaded file. No browser is opened for the download. On
@@ -66,24 +68,46 @@ export default function UpdateBanner({ info, onDismiss }: { info: UpdateInfo; on
   return (
     <div
       style={{
-        background: 'var(--tag-bg)',
-        color: 'var(--ink)',
-        padding: '10px 14px',
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.5)',
+        zIndex: 300,
         display: 'flex',
-        flexDirection: 'column',
-        gap: 8,
-        fontSize: 13,
-        borderBottom: '1px solid var(--rule)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
       }}
+      onClick={dismiss}
     >
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-        <span style={{ flex: 1 }}>
-          Petals {info.latestVersion} is available. You are on {info.currentVersion}.
-        </span>
-        <button onClick={dismiss} aria-label="Dismiss update" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--ink-muted)' }}>
-          ✕
-        </button>
-      </div>
+      <div
+        role="dialog"
+        aria-label="Update available"
+        style={{
+          background: 'var(--surface)',
+          color: 'var(--ink)',
+          padding: 20,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          fontSize: 14,
+          borderRadius: 20,
+          boxShadow: 'var(--shadow)',
+          width: '100%',
+          maxWidth: 360,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Update available</div>
+            <span>
+              Petals {info.latestVersion} is out. You are on {info.currentVersion}.
+            </span>
+          </div>
+          <button onClick={dismiss} aria-label="Dismiss update" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--ink-muted)' }}>
+            ✕
+          </button>
+        </div>
 
       {phase === 'idle' && !info.downloadUrl && (
         <span style={{ color: 'var(--ink-muted)' }}>This release has no APK file attached yet, so there is nothing to download.</span>
@@ -140,6 +164,14 @@ export default function UpdateBanner({ info, onDismiss }: { info: UpdateInfo; on
           </button>
         </div>
       )}
+      {phase === 'idle' && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={dismiss} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--ink-muted)', padding: '6px 10px' }}>
+            Later
+          </button>
+        </div>
+      )}
+      </div>
     </div>
   );
 }

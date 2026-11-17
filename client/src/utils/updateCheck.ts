@@ -20,8 +20,9 @@
 // The releases LIST endpoint is used on purpose, not
 // /releases/latest: /latest only returns full releases, and test
 // tags like v0.1.0-test.1 are prereleases, so /latest would 404
-// even when a test release exists. The list returns newest first
-// including prereleases; drafts are skipped.
+// even when a test release exists. The list includes prereleases
+// but is NOT in newest-first order, so the newest tag is picked by
+// semver in checkForUpdate; drafts are skipped.
 //
 // Live fact, 2026-11-17: the repo has NO releases at all yet
 // (GET /releases returns []), so the check reports 'no-release'
@@ -31,8 +32,15 @@ import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor
 import { kvGet, kvSet } from './localStore';
 
 const REPO = 'HaziqShake/Petals';
-const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases?per_page=10`;
-const UPDATE_CACHE_KEY = 'update-check';
+// per_page=100: the list is capped at 10 by default and GitHub does
+// NOT return it in newest-first order reliably, so a small page can
+// miss the newest tag entirely. The newest release is picked by
+// semver below, never by list position.
+const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases?per_page=100`;
+// v2: the v1 cache stored a wrong "latest" (first in list, not
+// newest), which made old builds report up-to-date. Bump the key so
+// every device re-checks against the network once.
+const UPDATE_CACHE_KEY = 'update-check-v2';
 const UPDATE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface UpdateInfo {
@@ -184,7 +192,14 @@ export async function checkForUpdate(opts: { force?: boolean } = {}): Promise<Ch
     body?: string;
     assets?: { name: string; browser_download_url: string; size?: number }[];
   }[];
-  const release = releases.find((r) => !r.draft && r.tag_name);
+  // BUG FIX, 2026-11-17: the old code took the FIRST non-draft release
+  // in the list. GitHub returned test.9 first even though test.13
+  // existed, so a build on test.11 was told it was up-to-date. Pick
+  // the highest tag by semver instead, never by list position.
+  const release = releases
+    .filter((r) => !r.draft && r.tag_name)
+    .sort((a, b) => compareVersions(normalise(a.tag_name!), normalise(b.tag_name!)))
+    .pop();
   if (!release || !release.tag_name) {
     return { status: 'no-release', info: null, message: 'No releases published yet.' };
   }
