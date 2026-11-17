@@ -113,9 +113,9 @@ export default function AuthPage() {
               </button>
               <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--ink-muted)', margin: '12px 0' }}>— or use email —</div>
               {emailMode === null ? (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn-ghost" onClick={() => setEmailMode('login')} style={{ flex: 1 }}>Sign in with email</button>
-                  <button className="btn-ghost" onClick={() => setEmailMode('signup')} style={{ flex: 1 }}>Sign up with email</button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button className="btn-ghost" onClick={() => setEmailMode('login')} style={{ width: '100%', whiteSpace: 'nowrap' }}>Sign in with email</button>
+                  <button className="btn-ghost" onClick={() => setEmailMode('signup')} style={{ width: '100%', whiteSpace: 'nowrap' }}>Sign up with email</button>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left' }}>
