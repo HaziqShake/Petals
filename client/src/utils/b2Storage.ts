@@ -26,7 +26,10 @@
 // render a raw stored URL days later and expect it to work.
 import { auth } from '../firebase';
 
-const SIGNER_URL = import.meta.env.VITE_SIGNER_URL as string | undefined;
+// Public Worker URL only, no secret. Default is embedded so CI builds
+// work without a .env file - without it uploads failed closed with
+// "signer is not configured". Env var still overrides when present.
+const SIGNER_URL = (import.meta.env.VITE_SIGNER_URL as string | undefined) ?? 'https://petals-signer.titan-stream.workers.dev';
 
 function requireSigner(): string {
   if (!SIGNER_URL) {
