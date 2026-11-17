@@ -1,6 +1,6 @@
 // Lazy-loaded pages keep the first paint small: only Auth + Notes are
 // needed at startup, Chat/Admin/Photos/Settings load on demand.
-import { useState, useEffect, lazy, Suspense, useRef } from 'react';
+import { useState, useEffect, lazy, Suspense, useRef, useCallback } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -38,6 +38,14 @@ function InnerApp() {
   const { roomId } = useAppContext();
   const [tab, setTab] = useState<Tab>('notes');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  // Room of the note being edited: usually the current room, but a
+  // note opened from All rooms may belong to another room.
+  const [editingNoteRoomId, setEditingNoteRoomId] = useState<string | null>(null);
+  const openNote = useCallback((id: string, noteRoomId?: string) => {
+    setEditingNoteId(id);
+    setEditingNoteRoomId(noteRoomId ?? roomId);
+  }, [roomId]);
+  const closeNote = useCallback(() => { setEditingNoteId(null); setEditingNoteRoomId(null); }, []);
   const [showNotifications, setShowNotifications] = useState(false);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
@@ -59,23 +67,24 @@ function InnerApp() {
   const lastNotifiedRef = useRef<string | null>(localStorage.getItem('petals_last_notified_msg'));
 
   useEffect(() => {
-    if (!roomId || !user) return;
-    updateDoc(doc(db, 'rooms', roomId), { [`activeNotes.${user.uid}`]: editingNoteId }).catch(console.error);
-  }, [editingNoteId, roomId, user]);
+    const targetRoom = editingNoteRoomId ?? roomId;
+    if (!targetRoom || !user) return;
+    updateDoc(doc(db, 'rooms', targetRoom), { [`activeNotes.${user.uid}`]: editingNoteId }).catch(console.error);
+  }, [editingNoteId, editingNoteRoomId, roomId, user]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const initBack = async () => {
       const handler = await CapApp.addListener('backButton', (data: { canGoBack: boolean }) => {
         if (showNotifications) setShowNotifications(false);
-        else if (editingNoteId !== null) setEditingNoteId(null);
+        else if (editingNoteId !== null) closeNote();
         else if (!data.canGoBack) CapApp.exitApp();
       });
       return handler;
     };
     const handlerPromise = initBack();
     return () => { handlerPromise.then((h) => h.remove()); };
-  }, [editingNoteId, showNotifications]);
+  }, [editingNoteId, showNotifications, closeNote]);
 
   // Update check once per launch, non-blocking. A dismissed version
   // stays dismissed until a newer release appears.
@@ -188,7 +197,7 @@ function InnerApp() {
   if (showNotifications) {
     return (
       <Suspense fallback={<Loading />}>
-        <NotificationsPage onClose={() => setShowNotifications(false)} onOpenChat={() => { setShowNotifications(false); setTab('chat'); }} onOpenNote={(id) => { setShowNotifications(false); setEditingNoteId(id); }} />
+        <NotificationsPage onClose={() => setShowNotifications(false)} onOpenChat={() => { setShowNotifications(false); setTab('chat'); }} onOpenNote={(id) => { setShowNotifications(false); openNote(id); }} />
       </Suspense>
     );
   }
@@ -196,7 +205,7 @@ function InnerApp() {
   if (editingNoteId !== null) {
     return (
       <Suspense fallback={<Loading />}>
-        <NoteEditorPage noteId={editingNoteId} onBack={() => setEditingNoteId(null)} />
+        <NoteEditorPage noteId={editingNoteId} roomIdOverride={editingNoteRoomId ?? undefined} onBack={closeNote} />
       </Suspense>
     );
   }
@@ -211,8 +220,8 @@ function InnerApp() {
         {unread > 0 && <span style={{ position: 'absolute', top: -4, right: -4, background: 'var(--accent)', color: '#fff', borderRadius: '50%', minWidth: 18, height: 18, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{unread > 99 ? '99+' : unread}</span>}
       </button>
       <Suspense fallback={<Loading />}>
-        {tab === 'notes' && <NotesPage onOpenNote={setEditingNoteId} />}
-        {tab === 'favourites' && <FavouritesPage onOpenNote={setEditingNoteId} />}
+        {tab === 'notes' && <NotesPage onOpenNote={openNote} />}
+        {tab === 'favourites' && <FavouritesPage onOpenNote={openNote} />}
         {tab === 'photos' && <PhotosPage />}
         {tab === 'chat' && <ChatPage />}
         {tab === 'settings' && <SettingsPage update={update} updateStatus={updateStatus} checkingUpdate={checkingUpdate} onCheckForUpdates={() => void manualCheckForUpdates()} onDismissUpdate={dismissUpdate} />}

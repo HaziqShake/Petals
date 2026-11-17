@@ -4,8 +4,8 @@
 // No old messaging code is reused here; there was none in the repo.
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query,
-  addDoc, updateDoc, arrayUnion, setDoc, startAfter, deleteField,
+  collection, collectionGroup, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query,
+  addDoc, updateDoc, arrayUnion, setDoc, startAfter, deleteField, where,
   type DocumentData, type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -48,6 +48,25 @@ function toMessage(d: QueryDocumentSnapshot<DocumentData>): ChatMessage {
     archivedPath: data.archivedPath,
     localExpired: data.localExpired ?? false,
   };
+}
+
+// Read-only messages from every room the user is a member of, newest
+// first. Used by the Photos screen so chat media from other rooms
+// shows up too. No orderBy, so no composite index is needed.
+export function useAllMessages(roomIds: string[]) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const key = roomIds.slice().sort().join(',');
+  useEffect(() => {
+    const ids = key ? key.split(',') : [];
+    if (ids.length === 0) { setMessages([]); return; }
+    const q = query(collectionGroup(db, 'messages'), where('roomId', 'in', ids.slice(0, 10)), limit(200));
+    const unsub = onSnapshot(q, (snap) => {
+      setMessages(snap.docs.map(toMessage).sort((a, b) => b.createdAt - a.createdAt));
+    }, () => undefined);
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return { messages };
 }
 
 export function useMessages(roomId: string | null) {

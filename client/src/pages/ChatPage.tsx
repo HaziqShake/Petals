@@ -13,7 +13,7 @@ import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { PullToRefreshIndicator } from '../components/PullToRefreshIndicator';
 import { isAdminEmail } from '../utils/admin';
 import { compressPhoto, getVideoInfo, makeVideoPoster, VIDEO_MAX_SECONDS, VIDEO_MAX_MB, VIDEO_MAX_WIDTH, VIDEO_MAX_HEIGHT } from '../utils/imageCompressor';
-import { uploadStoredMediaResumable, isOnCellular } from '../utils/b2Storage';
+import { uploadStoredMediaResumable } from '../utils/b2Storage';
 import { uid } from '../utils/imageUtils';
 import { enqueueMedia, listQueuedJobs, getQueuedBlob, dequeueMedia, isOnline, onOnlineChange, saveLocalMedia, fetchBlobCached, fetchVideoCached } from '../utils/localStore';
 import { saveHiddenMedia } from '../utils/mediaStore';
@@ -33,10 +33,14 @@ export default function ChatPage() {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [lightbox, setLightbox] = useState<{ url: string; mediaType?: 'image' | 'video'; isViewOnce?: boolean; mediaId?: string; archived?: boolean; storagePath?: string } | null>(null);
   const [search, setSearch] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
-  const [wifiOnly, setWifiOnly] = useState(true);
-  const [viewOnce, setViewOnce] = useState(false);
+  // Instagram-style view-once: no sticky checkbox. Picking a photo
+  // opens a preview sheet where that one photo can be sent as view
+  // once. Videos never get the option (images only).
+  const [pendingMedia, setPendingMedia] = useState<{ file: File; previewUrl: string; isVideo: boolean } | null>(null);
+  const [pendingViewOnce, setPendingViewOnce] = useState(false);
   const [showNewPill, setShowNewPill] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
@@ -167,7 +171,9 @@ export default function ChatPage() {
           const thumb = job.isVideo ? null : null;
           const { done } = uploadStoredMediaResumable(job.roomId, '__chat__', job.id, blob, thumb, job.isVideo, () => undefined);
           const up = await done;
-          await sendMessage({ senderUid: user.uid, senderName: user.displayName ?? 'Petal', type: job.isViewOnce ? 'view-once' : job.isVideo ? 'video' : 'photo', mediaUrl: up.storageUrl, thumbUrl: up.thumbUrl, storagePath: up.storagePath, thumbPath: up.thumbPath, mediaType: job.isVideo ? 'video' : 'image', isViewOnce: job.isViewOnce, viewedBy: [], replyTo: null });
+          // View-once is images only: a queued video never becomes view-once.
+          const queuedViewOnce = job.isViewOnce && !job.isVideo;
+          await sendMessage({ senderUid: user.uid, senderName: user.displayName ?? 'Petal', type: queuedViewOnce ? 'view-once' : job.isVideo ? 'video' : 'photo', mediaUrl: up.storageUrl, thumbUrl: up.thumbUrl, storagePath: up.storagePath, thumbPath: up.thumbPath, mediaType: job.isVideo ? 'video' : 'image', isViewOnce: queuedViewOnce, viewedBy: [], replyTo: null });
           await dequeueMedia(job.id);
         } catch { /* stays queued, retries next time online */ }
       }
@@ -176,20 +182,31 @@ export default function ChatPage() {
     return onOnlineChange((online) => { if (online) void flush(); });
   }, [roomId, user, sendMessage]);
 
-  const handleSendMedia = useCallback(async (file: File) => {
+  // Picking a file opens the preview sheet; it is only sent when the
+  // user taps Send there, choosing view-once per photo if they want.
+  const handlePickMedia = useCallback((file: File) => {
+    const isVideo = file.type.startsWith('video/');
+    setPendingViewOnce(false);
+    setPendingMedia({ file, previewUrl: URL.createObjectURL(file), isVideo });
+  }, []);
+
+  const handleSendMedia = useCallback(async (file: File, viewOnceFlag = false) => {
     if (!roomId || !user) return;
     // Offline: compress/validate, then queue the media for later instead
     // of failing. Firestore queues text writes itself; Storage does not.
     if (!isOnline()) {
       try {
         const blob = file.type.startsWith('video/') ? file : (await compressPhoto(file)).full;
-        await enqueueMedia({ id: uid(), kind: 'chat-media', roomId, fileName: file.name, fileType: file.type, isVideo: file.type.startsWith('video/'), isViewOnce: viewOnce, createdAt: Date.now() }, blob);
+        await enqueueMedia({ id: uid(), kind: 'chat-media', roomId, fileName: file.name, fileType: file.type, isVideo: file.type.startsWith('video/'), isViewOnce: viewOnceFlag && !file.type.startsWith('video/'), createdAt: Date.now() }, blob);
         setError('You are offline. This will send when you are back online.');
         return;
       } catch { setError('Could not queue that file. Try again when online.'); return; }
     }
-    if (wifiOnly && isOnCellular()) { setError('WiFi-only upload is on. Connect to WiFi or turn it off to send this.'); return; }
     const isVideo = file.type.startsWith('video/');
+    // View-once is images only, and any photo is compressed in-app
+    // until it fits, so no photo is ever rejected for size. Uploads
+    // work on WiFi and on mobile data alike, no WiFi-only gate.
+    const viewOncePhoto = viewOnceFlag && !isVideo;
     setError(null);
     setUploadPct(0);
     try {
@@ -202,24 +219,31 @@ export default function ChatPage() {
         const id = uid();
         const { done } = uploadStoredMediaResumable(roomId, '__chat__', id, file, poster, true, setUploadPct);
         const up = await done;
-        await saveLocalMedia(up.storageUrl, file, { kind: 'video', roomId, mediaId: id, storagePath: up.storagePath, mediaType: 'video', isViewOnce: viewOnce });
+        await saveLocalMedia(up.storageUrl, file, { kind: 'video', roomId, mediaId: id, storagePath: up.storagePath, mediaType: 'video', isViewOnce: false });
         await saveHiddenMedia(id, file, 'video/mp4').catch(() => undefined);
         if (up.thumbUrl && poster) await saveLocalMedia(up.thumbUrl, poster, { kind: 'thumb' });
-        sendOptimistic({ senderUid: user.uid, senderName: user.displayName ?? 'Petal', type: viewOnce ? 'view-once' : 'video', mediaUrl: up.storageUrl, thumbUrl: up.thumbUrl, storagePath: up.storagePath, thumbPath: up.thumbPath, mediaType: 'video', durationSeconds: Math.round(info.durationSeconds), isViewOnce: viewOnce, viewedBy: [], cachedBy: [user.uid], relayDeleted: false, replyTo: replyTo?.id ?? null });
+        sendOptimistic({ senderUid: user.uid, senderName: user.displayName ?? 'Petal', type: 'video', mediaUrl: up.storageUrl, thumbUrl: up.thumbUrl, storagePath: up.storagePath, thumbPath: up.thumbPath, mediaType: 'video', durationSeconds: Math.round(info.durationSeconds), isViewOnce: false, viewedBy: [], cachedBy: [user.uid], relayDeleted: false, replyTo: replyTo?.id ?? null });
       } else {
         const c = await compressPhoto(file);
         const id = uid();
         const { done } = uploadStoredMediaResumable(roomId, '__chat__', id, c.full, c.thumb, false, setUploadPct);
         const up = await done;
-        await saveLocalMedia(up.storageUrl, c.full, { kind: 'image', roomId, mediaId: id, storagePath: up.storagePath, mediaType: 'image', isViewOnce: viewOnce });
+        await saveLocalMedia(up.storageUrl, c.full, { kind: 'image', roomId, mediaId: id, storagePath: up.storagePath, mediaType: 'image', isViewOnce: viewOncePhoto });
         await saveHiddenMedia(id, c.full, 'image/webp').catch(() => undefined);
         if (up.thumbUrl && c.thumb) await saveLocalMedia(up.thumbUrl, c.thumb, { kind: 'thumb' });
-        sendOptimistic({ senderUid: user.uid, senderName: user.displayName ?? 'Petal', type: viewOnce ? 'view-once' : 'photo', mediaUrl: up.storageUrl, thumbUrl: up.thumbUrl, storagePath: up.storagePath, thumbPath: up.thumbPath, mediaType: 'image', isViewOnce: viewOnce, viewedBy: [], cachedBy: [user.uid], relayDeleted: false, replyTo: replyTo?.id ?? null });
+        sendOptimistic({ senderUid: user.uid, senderName: user.displayName ?? 'Petal', type: viewOncePhoto ? 'view-once' : 'photo', mediaUrl: up.storageUrl, thumbUrl: up.thumbUrl, storagePath: up.storagePath, thumbPath: up.thumbPath, mediaType: 'image', isViewOnce: viewOncePhoto, viewedBy: [], cachedBy: [user.uid], relayDeleted: false, replyTo: replyTo?.id ?? null });
       }
-      setReplyTo(null); setViewOnce(false);
-    } catch (err) { console.error(err); setError('Could not send that file. Try a shorter clip or smaller photo.'); }
+      setReplyTo(null);
+    } catch (err) {
+      console.error(err);
+      // Show the real reason, not a generic "smaller photo" hint:
+      // the compressor now guarantees any photo fits, so a failure
+      // here is a network / signer / upload problem, not size.
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Could not send that file: ${msg}`);
+    }
     finally { setUploadPct(null); }
-  }, [roomId, user, wifiOnly, viewOnce, replyTo, sendOptimistic]);
+  }, [roomId, user, replyTo, sendOptimistic]);
 
   const openMedia = useCallback(async (m: ChatMessage) => {
     if (!m.mediaUrl) return;
@@ -257,12 +281,21 @@ export default function ChatPage() {
 
   return (
     <div className="page" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div className="page-header"><h1>Chat</h1></div>
-      <div style={{ padding: '0 16px 8px' }}>
-        <input className="text-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search messages, sender, date, photo or video…" aria-label="Search chat" />
-        {q !== '' && <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 4 }}>{visible.length} match{visible.length === 1 ? '' : 'es'}{visible.length === 0 ? ' - try a sender name, a date like 17 Nov 2026, or photo / video' : ''}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 12px 8px', borderBottom: '1px solid var(--rule)', background: 'var(--bg)', position: 'sticky', top: 0, zIndex: 10 }}>
+        <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--primary)', color: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 600, flexShrink: 0, fontFamily: 'Caveat, cursive' }}>{partnerName.charAt(0).toUpperCase()}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{partnerName}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{partnerTyping ? 'typing…' : 'Petals chat'}</div>
+        </div>
+        <button onClick={() => setShowSearch((v) => !v)} aria-label="Search chat" style={{ background: 'var(--tag-bg)', border: 'none', borderRadius: '50%', width: 36, height: 36, fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>⌕</button>
       </div>
-      <div ref={listRef} onScroll={handleScroll} {...handlers} style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
+      {showSearch && (
+        <div style={{ padding: '8px 12px 4px' }}>
+          <input className="text-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search messages, sender, date, photo or video…" aria-label="Search chat" autoFocus style={{ borderRadius: 20 }} />
+          {q !== '' && <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 4 }}>{visible.length} match{visible.length === 1 ? '' : 'es'}{visible.length === 0 ? ' - try a sender name, a date like 17 Nov 2026, or photo / video' : ''}</div>}
+        </div>
+      )}
+      <div ref={listRef} onScroll={handleScroll} {...handlers} style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
         <PullToRefreshIndicator pullDist={pullDist} isRefreshing={isRefreshing} threshold={70} />
         {loading ? <p style={{ color: 'var(--ink-muted)', textAlign: 'center' }}>Loading…</p> : all.length === 0 ? (
           <div className="empty-state"><p>Say hi to your partner.</p><p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Messages, photos and short clips live here. Notes stay in the notebook.</p></div>
@@ -276,19 +309,50 @@ export default function ChatPage() {
               const showDay = !prev || dayLabel(prev.createdAt) !== dayLabel(m.createdAt);
               return (
                 <div key={m.id} style={{ display: 'flex', flexDirection: 'column' }}>
-                  {showDay && <div style={{ alignSelf: 'center', fontSize: 11, color: 'var(--ink-muted)', background: 'var(--tag-bg)', borderRadius: 12, padding: '3px 10px', margin: '4px 0' }}>{dayLabel(m.createdAt)}</div>}
+                  {showDay && <div style={{ alignSelf: 'center', fontSize: 11, color: 'var(--ink-muted)', background: 'var(--tag-bg)', borderRadius: 12, padding: '3px 10px', margin: '6px 0' }}>{dayLabel(m.createdAt)}</div>}
                   <MessageBubble message={m} mine={m.senderUid === user?.uid} isAdmin={isAdmin} currentUid={user?.uid ?? null} partnerReadAt={partnerReadAt} partnerName={partnerName} repliedTo={m.replyTo ? messages.find((x) => x.id === m.replyTo) : undefined} sending={Boolean((m as Optimistic).temp && !(m as Optimistic).failed)} failed={Boolean((m as Optimistic).failed)} onOpenMedia={(msg) => void openMedia(msg)} onReply={setReplyTo} onDelete={(msg) => void deleteMessage(msg.id)} onToggleReaction={handleToggleReaction} onRetry={(msg) => handleRetry(msg)} />
                 </div>
               );
             })}
-            {partnerTyping && <div style={{ fontSize: 12, color: 'var(--ink-muted)', alignSelf: 'flex-start' }}>Partner is typing…</div>}
+            {partnerTyping && (
+              <div style={{ alignSelf: 'flex-start', background: 'var(--surface)', borderRadius: '18px 18px 18px 4px', padding: '10px 14px', boxShadow: 'var(--shadow)', display: 'flex', gap: 4, alignItems: 'center' }}>
+                <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
+              </div>
+            )}
           </>
         )}
       </div>
       {showNewPill && <button onClick={() => scrollToBottom(true)} style={{ position: 'absolute', bottom: 170, left: '50%', transform: 'translateX(-50%)', background: 'var(--primary)', border: 'none', borderRadius: 16, padding: '6px 14px', cursor: 'pointer', fontSize: 12 }}>New messages ↓</button>}
-      {replyTo && <div style={{ padding: '8px 16px', fontSize: 12, background: 'var(--tag-bg)' }}>Replying to {replyTo.text || replyTo.type} <button onClick={() => setReplyTo(null)} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer' }}>Cancel</button></div>}
-      {error && <p style={{ color: 'var(--accent)', fontSize: 13, textAlign: 'center', padding: '0 16px' }}>{error}</p>}
-      <ChatInput onSendText={handleSendText} onSendMedia={(f) => void handleSendMedia(f)} onTyping={handleTyping} viewOnce={viewOnce} onViewOnceChange={setViewOnce} wifiOnly={wifiOnly} onWifiOnlyChange={setWifiOnly} uploadPct={uploadPct} />
+      {replyTo && <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', fontSize: 12, background: 'var(--tag-bg)', borderTop: '1px solid var(--rule)' }}><span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Replying to {replyTo.text || replyTo.type}</span><button onClick={() => setReplyTo(null)} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', flexShrink: 0 }}>Cancel</button></div>}
+      {error && <p style={{ color: 'var(--accent)', fontSize: 13, textAlign: 'center', padding: '4px 16px' }}>{error}</p>}
+      {pendingMedia && (
+        <div style={{ borderTop: '1px solid var(--rule)', background: 'var(--surface)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+          {pendingMedia.isVideo ? (
+            <video src={pendingMedia.previewUrl} controls playsInline style={{ maxWidth: '100%', maxHeight: 240, borderRadius: 16, background: '#000' }} />
+          ) : (
+            <img src={pendingMedia.previewUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: 240, borderRadius: 16, objectFit: 'contain' }} />
+          )}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
+            <button onClick={() => { URL.revokeObjectURL(pendingMedia.previewUrl); setPendingMedia(null); setPendingViewOnce(false); }} style={{ background: 'var(--tag-bg)', border: 'none', borderRadius: 20, padding: '10px 16px', fontSize: 14, cursor: 'pointer', color: 'var(--ink)' }}>Cancel</button>
+            {!pendingMedia.isVideo && (
+              <button
+                onClick={() => setPendingViewOnce((v) => !v)}
+                aria-pressed={pendingViewOnce}
+                style={{ background: pendingViewOnce ? 'var(--accent)' : 'var(--tag-bg)', color: pendingViewOnce ? '#fff' : 'var(--ink)', border: 'none', borderRadius: 20, padding: '10px 16px', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <span style={{ width: 20, height: 20, borderRadius: '50%', border: `1.5px solid ${pendingViewOnce ? '#fff' : 'var(--ink)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>1</span>
+                View once
+              </button>
+            )}
+            <button
+              className="btn-primary"
+              onClick={() => { const { file } = pendingMedia; const vo = pendingViewOnce; URL.revokeObjectURL(pendingMedia.previewUrl); setPendingMedia(null); setPendingViewOnce(false); void handleSendMedia(file, vo); }}
+              style={{ flex: 1, padding: '10px 16px' }}
+            >Send{pendingViewOnce ? ' view once' : ''}</button>
+          </div>
+        </div>
+      )}
+      <ChatInput onSendText={handleSendText} onPickMedia={handlePickMedia} onTyping={handleTyping} uploadPct={uploadPct} />
       {lightbox && <Lightbox url={lightbox.url} mediaId={lightbox.mediaId} mediaType={lightbox.mediaType} isViewOnce={lightbox.isViewOnce} archived={lightbox.archived} storagePath={lightbox.storagePath} onClose={() => setLightbox(null)} />}
     </div>
   );

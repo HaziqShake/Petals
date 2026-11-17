@@ -4,7 +4,7 @@ import { useNotes } from '../hooks/useNote';
 import { SkeletonNoteCard } from '../components/SkeletonCard';
 import { HeartIcon, TrashIcon, EditIcon } from '../components/Icons';
 import type { Note } from '../../../shared/types';
-import { formatNoteTime } from '../utils/formatDate';
+import { formatCreatedDate } from '../utils/formatDate';
 
 interface Props {
   onOpenNote: (id: string) => void;
@@ -35,8 +35,8 @@ function FavouriteNoteCard({ note, onClick, onLongPress }: { note: Note; onClick
     <div className="note-card" onClick={onClick} onContextMenu={(e) => { e.preventDefault(); onLongPress(); }} style={{ position: 'relative' }}>
       <div className="favourite-indicator"><HeartIcon size={16} fill="var(--accent)" color="var(--accent)" /></div>
       <div className="card-title">{note.title?.trim() || 'Untitled'}</div>
+      <div className="card-time" style={{ marginTop: 0 }}>Created {formatCreatedDate(note.createdAt ?? note.updatedAt)}</div>
       <div className="card-preview">{preview || 'Empty note…'}</div>
-      <div className="card-time">{formatNoteTime(note.updatedAt)}</div>
     </div>
   );
 }

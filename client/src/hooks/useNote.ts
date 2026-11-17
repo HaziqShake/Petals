@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   collection,
+  collectionGroup,
   doc,
   onSnapshot,
   addDoc,
@@ -8,6 +9,8 @@ import {
   deleteDoc,
   query,
   orderBy,
+  where,
+  limit,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { Note, StickerPlacement, Photo } from '../../../shared/types';
@@ -70,6 +73,41 @@ export function useNotes(roomId: string | null) {
   };
 
   return { notes, loading, createNote, deleteNote, toggleFavourite, updateNote };
+}
+
+// Notes from every room the user is a member of, newest first.
+// Collection-group query on roomId (no orderBy, so no composite index
+// is needed; sorting is client side, like useRoomStoredPhotos).
+// Only rooms the user belongs to are queried, so the Firestore rules
+// (member or admin) pass per note.
+export function useAllNotes(roomIds: string[]) {
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [loading, setLoading] = useState(true);
+  const key = roomIds.slice().sort().join(',');
+  useEffect(() => {
+    const ids = key ? key.split(',') : [];
+    if (ids.length === 0) { setNotes([]); setLoading(false); return; }
+    setLoading(true);
+    // Firestore `in` takes at most 10 values; rooms are few, chunk anyway.
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
+    const unsubs: Array<() => void> = [];
+    const byId = new Map<string, Note>();
+    const emit = () => {
+      setNotes([...byId.values()].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)));
+      setLoading(false);
+    };
+    for (const chunk of chunks) {
+      const q = query(collectionGroup(db, 'notes'), where('roomId', 'in', chunk), limit(200));
+      unsubs.push(onSnapshot(q, (snap) => {
+        for (const d of snap.docs) byId.set(`${(d.data() as Note).roomId}:${d.id}`, { id: d.id, ...d.data() } as Note);
+        emit();
+      }, () => setLoading(false)));
+    }
+    return () => { unsubs.forEach((u) => u()); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return { notes, loading };
 }
 
 export function useNote(roomId: string | null, noteId: string | null) {

@@ -9,9 +9,10 @@
 // - Search runs on metadata only (note title, Chat, date, photo/video).
 import { useState, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { useNotes } from '../hooks/useNote';
+import { useAllNotes } from '../hooks/useNote';
+import { useUserRooms } from '../hooks/useUserRooms';
 import { useRoomStoredPhotos } from '../hooks/usePhotos';
-import { useMessages } from '../hooks/useMessages';
+import { useAllMessages } from '../hooks/useMessages';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { PullToRefreshIndicator } from '../components/PullToRefreshIndicator';
 import { SkeletonPhotoCard } from '../components/SkeletonCard';
@@ -99,10 +100,16 @@ const formatDuration = (s?: number) => {
 };
 
 export default function PhotosPage() {
-  const { roomId } = useAppContext();
-  const { notes, loading } = useNotes(roomId);
-  const { photos: storedPhotos } = useRoomStoredPhotos(roomId);
-  const { messages } = useMessages(roomId);
+  const { roomId, user } = useAppContext();
+  // Cross-room: media from every room the user is a member of shows
+  // here, labelled with its room code on the tile. Chat itself stays
+  // per-room; only the media grid is merged.
+  const { rooms: myRooms } = useUserRooms(user?.uid ?? null);
+  const roomIds = myRooms.length > 0 ? myRooms.map((r) => r.id) : (roomId ? [roomId] : []);
+  const { notes, loading } = useAllNotes(roomIds);
+  const { photos: storedPhotos } = useRoomStoredPhotos(roomIds);
+  const { messages } = useAllMessages(roomIds);
+  const multiRoom = roomIds.length > 1;
   const [lightbox, setLightbox] = useState<{ url: string; mediaId: string; mediaType: 'image' | 'video'; archived?: boolean; storagePath?: string } | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'image' | 'video'>('all');
@@ -126,7 +133,7 @@ export default function PhotosPage() {
         thumbPath: p.thumbPath,
         mediaType: (p.mediaType ?? 'image') as 'image' | 'video',
         takenAt: p.takenAt,
-        sourceLabel: n.title?.trim() || 'Untitled',
+        sourceLabel: (n.title?.trim() || 'Untitled') + (multiRoom && n.roomId ? ` · ${n.roomId}` : ''),
         source: 'note' as const,
         noteId: n.id,
         roomId: n.roomId,
@@ -142,7 +149,7 @@ export default function PhotosPage() {
         thumbPath: s.thumbPath,
         mediaType: (s.mediaType ?? 'image') as 'image' | 'video',
         takenAt: s.takenAt,
-        sourceLabel: notes.find((n) => n.id === s.noteId)?.title?.trim() || 'Untitled',
+        sourceLabel: (notes.find((n) => n.id === s.noteId)?.title?.trim() || 'Untitled') + (multiRoom && s.roomId ? ` · ${s.roomId}` : ''),
         source: 'note' as const,
         noteId: s.noteId,
         roomId: s.roomId,
@@ -161,7 +168,7 @@ export default function PhotosPage() {
         thumbPath: m.thumbPath,
         mediaType: (m.mediaType ?? 'image') as 'image' | 'video',
         takenAt: m.createdAt,
-        sourceLabel: 'Chat',
+        sourceLabel: 'Chat' + (multiRoom && m.roomId ? ` · ${m.roomId}` : ''),
         source: 'chat' as const,
         messageId: m.id,
         roomId: m.roomId,
@@ -176,7 +183,7 @@ export default function PhotosPage() {
       .filter((p, i, arr) => arr.findIndex((x) => x.id === p.id) === i)
       .sort((a, b) => (b.takenAt ?? 0) - (a.takenAt ?? 0));
     return merged.map(({ isViewOnce: _vo, ...rest }) => rest);
-  }, [notes, storedPhotos, messages]);
+  }, [notes, storedPhotos, messages, multiRoom]);
 
   const photoCount = allMedia.filter((p) => p.mediaType === 'image').length;
   const videoCount = allMedia.filter((p) => p.mediaType === 'video').length;
@@ -244,7 +251,7 @@ export default function PhotosPage() {
         <div className="empty-state">
           <div className="empty-icon"><CameraIcon size={56} color="var(--rule)" /></div>
           <p>No memories captured yet.</p>
-          <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Photos from notes and chat will show up here, newest first.</p>
+          <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Photos from notes and chat in all your rooms will show up here, newest first.</p>
         </div>
       </div>
     );

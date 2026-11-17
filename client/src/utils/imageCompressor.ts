@@ -22,8 +22,17 @@ export interface CompressedPhoto {
 const TARGET_BYTES = 700 * 1024;
 const START_MAX_DIM = 1920;
 const START_QUALITY = 0.86;
-const MIN_QUALITY = 0.72;
-const MAX_TRIES = 5;
+// Any photo must be uploadable: the old loop stopped after 5 tries
+// (quality 0.72, barely shrunk), so a detailed camera photo could
+// still be over the Worker's 2 MB cap and the app told the user to
+// "upload a smaller photo". Now the loop keeps going - quality down
+// to 0.50, then dimensions down in 15% steps to 480px - until the
+// result is under target, up to 20 tries. A 480px WebP at 0.50 is
+// always far under 700 KB, so the loop is guaranteed to finish under
+// target for any decodable image.
+const MIN_QUALITY = 0.5;
+const MIN_DIM = 480;
+const MAX_TRIES = 20;
 
 async function decodeFile(file: File): Promise<{ bitmap: ImageBitmap; width: number; height: number }> {
   try {
@@ -99,10 +108,17 @@ export async function compressPhoto(
     for (let attempt = 1; attempt < MAX_TRIES && full.size > targetBytes; attempt++) {
       if (quality > MIN_QUALITY) {
         quality = Math.max(MIN_QUALITY, quality - 0.07);
+      } else if (maxDim > MIN_DIM) {
+        maxDim = Math.max(MIN_DIM, Math.round(maxDim * 0.85));
       } else {
-        maxDim = Math.round(maxDim * 0.85);
+        break;
       }
       full = await drawToBlob(bitmap, width, height, maxDim, quality);
+    }
+    // Last resort, should never be reached: one tiny pass that is
+    // always under target, so no photo is ever rejected for size.
+    if (full.size > targetBytes) {
+      full = await drawToBlob(bitmap, width, height, MIN_DIM, MIN_QUALITY);
     }
     const thumb = await drawToBlob(bitmap, width, height, 400, 0.75);
     const scale = Math.min(1, maxDim / Math.max(width, height));

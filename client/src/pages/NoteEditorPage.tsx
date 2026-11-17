@@ -4,9 +4,9 @@ import { db } from '../firebase';
 import { useNote } from '../hooks/useNote';
 import { useAppContext } from '../context/AppContext';
 import type { Photo, StickerPlacement } from '../../../shared/types';
-import { compressToDataUrl, measureImage, uid } from '../utils/imageUtils';
+import { uid } from '../utils/imageUtils';
 import { compressPhoto } from '../utils/imageCompressor';
-import { uploadStoredMediaResumable, isOnCellular } from '../utils/b2Storage';
+import { uploadStoredMediaResumable } from '../utils/b2Storage';
 import { saveLocalMedia, fetchBlobCached } from '../utils/localStore';
 import { markMediaRedownloaded } from '../utils/mediaArchive';
 import { saveHiddenMedia } from '../utils/mediaStore';
@@ -24,15 +24,22 @@ import StickerPicker from '../components/StickerPicker';
 interface Props {
   noteId: string;
   onBack: () => void;
+  roomIdOverride?: string;
 }
 
-export default function NoteEditorPage({ noteId, onBack }: Props) {
-  const { roomId, user, theme } = useAppContext();
+export default function NoteEditorPage({ noteId, onBack, roomIdOverride }: Props) {
+  const { roomId: ctxRoomId, user, theme } = useAppContext();
+  // A note opened from All rooms may belong to another room than the
+  // current one; the editor must read/write that room, not this one.
+  const roomId = roomIdOverride ?? ctxRoomId;
   const room = useRoomData(roomId);
   const { note, saveDebounced, setTyping, updateStickers, updatePhotos } = useNote(roomId, noteId);
   const { photos: storedPhotos, loading: storedLoading, hasMore: storedHasMore, loadMore: loadMoreStored, addPhoto, updatePhoto, markViewed, markCached, deletePhoto } = usePhotos(roomId, noteId);
-  const [viewOnce, setViewOnce] = useState(false);
-  const [wifiOnly, setWifiOnly] = useState(true);
+  // Instagram-style view-once for notes: no sticky checkbox. Picking
+  // a photo opens a preview sheet where that one photo can be added
+  // as view once. Paste inserts directly, as a normal photo.
+  const [pendingPhoto, setPendingPhoto] = useState<{ file: File; previewUrl: string } | null>(null);
+  const [pendingViewOnce, setPendingViewOnce] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const isAdmin = isAdminEmail(user?.email);
@@ -135,47 +142,42 @@ export default function NoteEditorPage({ noteId, onBack }: Props) {
   // Photos only in notes: videos stay in Chat only (2026-11-17).
   // Existing video docs in Firestore are NOT deleted, they are just
   // never uploaded or shown here any more.
-  const insertPhotoFile = async (file: File) => {
+  // Photos go to B2 + the photos subcollection, never into the note
+  // doc, so there is no photo count limit: the old 6-photo cap only
+  // existed in the legacy base64 fallback, which ran when the B2
+  // upload failed and stuffed the photo into the note doc itself
+  // (1 MiB Firestore doc limit). That fallback is gone: if the upload
+  // fails, the real reason is shown instead of silently falling back
+  // and then refusing photo 7. Uploads work on WiFi and on data.
+  const insertPhotoFile = async (file: File, viewOnceFlag = false) => {
     if (!roomId || !note) return;
     setUploadError(null);
     if (file.type.startsWith('video/')) { setUploadError('Videos stay in Chat. Notes are photos only.'); return; }
-    if (wifiOnly && isOnCellular()) { setUploadError('WiFi-only upload is on. Connect to WiFi or turn it off in the toolbar.'); return; }
     setUploading(true);
     try {
       const centre = centreOfVisibleCard(wrapperRef.current);
       const id = uid();
-      const { w, h } = await measureImage(file);
       const c = await compressPhoto(file);
       const { done } = uploadStoredMediaResumable(roomId, noteId, id, c.full, c.thumb, false, setUploadPct);
       const up = await done;
       // Client-side primary: the full compressed photo is stored on
       // this device first, in hidden app storage and IndexedDB.
-      await saveLocalMedia(up.storageUrl, c.full, { kind: 'image', roomId, noteId, mediaId: id, storagePath: up.storagePath, mediaType: 'image', isViewOnce: viewOnce });
+      await saveLocalMedia(up.storageUrl, c.full, { kind: 'image', roomId, noteId, mediaId: id, storagePath: up.storagePath, mediaType: 'image', isViewOnce: viewOnceFlag });
       await saveHiddenMedia(id, c.full, 'image/webp').catch(() => undefined);
       if (up.thumbUrl && c.thumb) await saveLocalMedia(up.thumbUrl, c.thumb, { kind: 'thumb' });
-      const stored: StoredPhoto = { id, roomId, noteId, url: up.storageUrl, storageUrl: up.storageUrl, thumbUrl: up.thumbUrl, storagePath: up.storagePath, thumbPath: up.thumbPath, width: c.width, height: c.height, scale: 1, rotation: 0, x: centre.xPct, y: centre.yPx, coordVersion: 2, takenAt: file.lastModified, createdAt: Date.now(), mediaType: 'image', isViewOnce: viewOnce, viewedBy: [], cachedBy: user ? [user.uid] : [], relayDeleted: false };
+      const stored: StoredPhoto = { id, roomId, noteId, url: up.storageUrl, storageUrl: up.storageUrl, thumbUrl: up.thumbUrl, storagePath: up.storagePath, thumbPath: up.thumbPath, width: c.width, height: c.height, scale: 1, rotation: 0, x: centre.xPct, y: centre.yPx, coordVersion: 2, takenAt: file.lastModified, createdAt: Date.now(), mediaType: 'image', isViewOnce: viewOnceFlag, viewedBy: [], cachedBy: user ? [user.uid] : [], relayDeleted: false };
       await addPhoto(stored);
-      setViewOnce(false);
-      void w; void h;
     } catch (err) {
       console.error('Photo import failed:', err);
-      // Fallback: legacy base64, capped at 6 so the note doc cannot blow up.
-      if ((note?.photos?.length ?? 0) >= 6) { setUploadError('Storage upload failed and this note already has 6 legacy photos. Try again when online.'); return; }
-      try {
-        const { w, h } = await measureImage(file);
-        const dataUrl = await compressToDataUrl(file);
-        const centre = centreOfVisibleCard(wrapperRef.current);
-        const photo: Photo = { id: uid(), url: dataUrl, scale: 1, rotation: 0, width: w, height: h, x: centre.xPct, y: centre.yPx, coordVersion: 2, isPx: false, takenAt: file.lastModified, isViewOnce: viewOnce, viewedBy: [] };
-        updatePhotos([...(note?.photos ?? []), photo]);
-      } catch { setUploadError('Could not import photo. Please try again.'); }
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setUploadError(`Photo upload failed: ${msg}. Try again, on WiFi or data.`);
     } finally { setUploading(false); setUploadPct(null); }
   };
 
   const handlePhotoInsert = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) { void insertPhotoFile(file);
-      e.target.value = '';
-    }
+    if (e.target) e.target.value = '';
+    if (file) setPendingPhoto({ file, previewUrl: URL.createObjectURL(file) });
   };
 
   const handleStickerAdd = (sticker: Omit<StickerPlacement, 'id'>) => {
@@ -374,13 +376,34 @@ export default function NoteEditorPage({ noteId, onBack }: Props) {
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
           </svg>
         </button>
-        <label style={{ fontSize: 11, display: 'flex', gap: 4, alignItems: 'center', color: 'var(--ink-muted)' }}><input type="checkbox" checked={viewOnce} onChange={(e) => setViewOnce(e.target.checked)} /> View once</label>
-        <label style={{ fontSize: 11, display: 'flex', gap: 4, alignItems: 'center', color: 'var(--ink-muted)' }}><input type="checkbox" checked={wifiOnly} onChange={(e) => setWifiOnly(e.target.checked)} /> WiFi only</label>
         {uploadPct !== null && <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{uploadPct}%</span>}
         {uploadError && <span style={{ fontSize: 12, color: 'var(--accent)' }}>{uploadError}</span>}
         <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoInsert} />
       </div>
 
+      {pendingPhoto && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => { URL.revokeObjectURL(pendingPhoto.previewUrl); setPendingPhoto(null); setPendingViewOnce(false); }}>
+          <div style={{ background: 'var(--surface)', borderRadius: '20px 20px 0 0', padding: 16, width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+            <img src={pendingPhoto.previewUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 16, objectFit: 'contain' }} />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
+              <button onClick={() => { URL.revokeObjectURL(pendingPhoto.previewUrl); setPendingPhoto(null); setPendingViewOnce(false); }} style={{ background: 'var(--tag-bg)', border: 'none', borderRadius: 20, padding: '10px 16px', fontSize: 14, cursor: 'pointer', color: 'var(--ink)' }}>Cancel</button>
+              <button
+                onClick={() => setPendingViewOnce((v) => !v)}
+                aria-pressed={pendingViewOnce}
+                style={{ background: pendingViewOnce ? 'var(--accent)' : 'var(--tag-bg)', color: pendingViewOnce ? '#fff' : 'var(--ink)', border: 'none', borderRadius: 20, padding: '10px 16px', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <span style={{ width: 20, height: 20, borderRadius: '50%', border: `1.5px solid ${pendingViewOnce ? '#fff' : 'var(--ink)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>1</span>
+                View once
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => { const { file } = pendingPhoto; const vo = pendingViewOnce; URL.revokeObjectURL(pendingPhoto.previewUrl); setPendingPhoto(null); setPendingViewOnce(false); void insertPhotoFile(file, vo); }}
+                style={{ flex: 1, padding: '10px 16px' }}
+              >Add{pendingViewOnce ? ' view once' : ''}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {lightboxUrl && <Lightbox url={lightboxUrl} mediaId={lightboxMeta?.mediaId} mediaType={lightboxMeta?.mediaType} isViewOnce={lightboxMeta?.isViewOnce} archived={lightboxMeta?.archived} storagePath={lightboxMeta?.storagePath} onClose={() => { setLightboxUrl(null); setLightboxMeta(null); }} />}
       {showStickerPicker && (
         <StickerPicker

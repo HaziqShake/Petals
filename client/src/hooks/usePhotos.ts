@@ -194,18 +194,20 @@ export function usePhotos(roomId: string | null, noteId: string | null) {
 /** All stored photos in a room, newest first, thumbnails only. No orderBy
  *  on the collectionGroup query so no composite index is needed in test;
  *  sorting is done client side. */
-export function useRoomStoredPhotos(roomId: string | null) {
+export function useRoomStoredPhotos(roomId: string | string[] | null) {
   const [photos, setPhotos] = useState<StoredPhoto[]>([]);
   const [loading, setLoading] = useState(true);
+  const key = Array.isArray(roomId) ? roomId.slice().sort().join(',') : (roomId ?? '');
 
   useEffect(() => {
-    if (!roomId) {
+    const ids = key ? key.split(',') : [];
+    if (ids.length === 0) {
       setPhotos([]);
       setLoading(false);
       return;
     }
     setLoading(true);
-    const q = query(collectionGroup(db, 'photos'), where('roomId', '==', roomId), limit(200));
+    const q = query(collectionGroup(db, 'photos'), where('roomId', 'in', ids.slice(0, 10)), limit(200));
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -216,7 +218,8 @@ export function useRoomStoredPhotos(roomId: string | null) {
       () => setLoading(false),
     );
     return unsub;
-  }, [roomId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
   return { photos, loading };
 }

@@ -20,13 +20,12 @@
 // appears in Gallery. Settings can switch it to MOVE, which deletes
 // the hidden copy after a successful save. See TEST_RELEASE_NOTES.md.
 //
-// Auto-download: on by default, WiFi only by default. On mobile data
-// it is off unless the user turns it on in Settings. Thumbnails are
-// small and still load; full files wait for WiFi.
+// Auto-download: on by default, on both WiFi and mobile data. There
+// is no WiFi-only mode any more: uploads and downloads work the same
+// on WiFi and on data.
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { getCachedBlobUrl, putBlob, deleteLocalBlob, type BlobMeta } from './localStore';
-import { isOnCellular } from './b2Storage';
 
 export const HIDDEN_FOLDER = 'Petals';
 // Exact on-device path, shown in Settings. com.hi.petals is the app id
@@ -64,12 +63,10 @@ export function setMediaSettings(next: Partial<MediaSettings>): MediaSettings {
 }
 
 // Should a full file auto-download right now? Thumbnails are not
-// gated by this; only full photos and videos are.
+// gated by this; only full photos and videos are. Works on WiFi and
+// on mobile data alike.
 export function shouldAutoDownload(): boolean {
-  const s = getMediaSettings();
-  if (!s.autoDownload) return false;
-  if (isOnCellular() && !s.autoDownloadOnMobileData) return false;
-  return true;
+  return getMediaSettings().autoDownload;
 }
 
 export function isNative(): boolean {

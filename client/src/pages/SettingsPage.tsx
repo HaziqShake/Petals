@@ -178,9 +178,7 @@ export default function SettingsPage({
           <label style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
             <input type="checkbox" checked={media.autoDownload} onChange={(e) => updateMedia({ autoDownload: e.target.checked })} /> Auto-download media
           </label>
-          <label style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input type="checkbox" checked={media.autoDownloadOnMobileData} disabled={!media.autoDownload} onChange={(e) => updateMedia({ autoDownloadOnMobileData: e.target.checked })} /> Auto-download on mobile data too (off means WiFi only)
-          </label>
+          <span style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Auto-download works on WiFi and mobile data.</span>
           <label style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
             <input type="checkbox" checked={media.saveAsMove} onChange={(e) => updateMedia({ saveAsMove: e.target.checked })} /> Move instead of copy when saving to Gallery (removes the hidden Petals copy after saving)
           </label>

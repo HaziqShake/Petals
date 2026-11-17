@@ -1,24 +1,34 @@
-// Chat input with its own local state, so every keystroke re-renders
-// only this component, never the message list. Typing is debounced:
-// it tells the parent at most once per second while typing, and clears
-// 3 seconds after the last keystroke.
+// Chat input, rebuilt for mobile, Instagram-like.
+// Own local state, so every keystroke re-renders only this component,
+// never the message list. Typing is debounced: it tells the parent at
+// most once per second while typing, and clears 3 seconds after the
+// last keystroke.
+//
+// Layout on mobile: one clean row - attach (+), camera, a rounded
+// text pill, and a round send button. There is no WiFi-only checkbox
+// and no view-once checkbox here: uploads work on WiFi and on mobile
+// data alike, and view-once is chosen per photo in the preview sheet
+// that opens after picking it, like Instagram, not as a sticky toggle.
+// - Camera: a second hidden file input with capture="environment"
+//   opens the phone camera directly on Android, no new plugin needed.
+//   The gallery input has no capture attribute, so it opens the picker.
+// - Picking a file does not send it: onPickMedia hands it to ChatPage,
+//   which shows the preview sheet with Send / View once.
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { hapticSuccess } from '../utils/haptics';
 
 interface Props {
   onSendText: (text: string) => void;
-  onSendMedia: (file: File) => void;
+  onPickMedia: (file: File) => void;
   onTyping: (typing: boolean) => void;
-  viewOnce: boolean;
-  onViewOnceChange: (v: boolean) => void;
-  wifiOnly: boolean;
-  onWifiOnlyChange: (v: boolean) => void;
   uploadPct: number | null;
 }
 
-export default function ChatInput({ onSendText, onSendMedia, onTyping, viewOnce, onViewOnceChange, wifiOnly, onWifiOnlyChange, uploadPct }: Props) {
+export default function ChatInput({ onSendText, onPickMedia, onTyping, uploadPct }: Props) {
   const [text, setText] = useState('');
+  const [showAttach, setShowAttach] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const lastTypingSent = useRef(0);
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -50,19 +60,47 @@ export default function ChatInput({ onSendText, onSendMedia, onTyping, viewOnce,
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (e.target) e.target.value = '';
-    if (file) onSendMedia(file);
+    setShowAttach(false);
+    if (file) onPickMedia(file);
   };
 
   return (
-    <div>
-      {uploadPct !== null && <p style={{ fontSize: 12, textAlign: 'center', color: 'var(--ink-muted)', margin: '4px 0' }}>Uploading {uploadPct}%</p>}
-      <div style={{ display: 'flex', gap: 8, padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', borderTop: '1px solid var(--rule)', background: 'var(--bg)', alignItems: 'center' }}>
-        <button className="toolbar-btn" onClick={() => fileRef.current?.click()} aria-label="Send photo or video" style={{ transition: 'transform 150ms ease-out' }}>+</button>
+    <div style={{ position: 'relative', background: 'var(--bg)' }}>
+      {uploadPct !== null && (
+        <div style={{ height: 3, background: 'var(--tag-bg)', borderRadius: 2, overflow: 'hidden', margin: '0 12px' }}>
+          <div style={{ height: '100%', width: `${uploadPct}%`, background: 'var(--accent)', borderRadius: 2, transition: 'width 200ms ease-out' }} />
+        </div>
+      )}
+      {showAttach && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowAttach(false)} />
+          <div style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 12, zIndex: 50, background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 16, padding: 6, boxShadow: 'var(--shadow)', width: 220, display: 'flex', flexDirection: 'column' }}>
+            <button onClick={() => fileRef.current?.click()} style={{ background: 'none', border: 'none', textAlign: 'left', padding: '10px 12px', fontSize: 14, color: 'var(--ink)', cursor: 'pointer', borderRadius: 10 }}>Photo or video from gallery</button>
+            <button onClick={() => cameraRef.current?.click()} style={{ background: 'none', border: 'none', textAlign: 'left', padding: '10px 12px', fontSize: 14, color: 'var(--ink)', cursor: 'pointer', borderRadius: 10 }}>Take a photo</button>
+          </div>
+        </>
+      )}
+      <div style={{ display: 'flex', gap: 8, padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', alignItems: 'flex-end' }}>
+        <button className="toolbar-btn" onClick={() => setShowAttach((v) => !v)} aria-label="Attach photo, video or camera" style={{ flexShrink: 0, fontSize: 20, transition: 'transform 150ms ease-out' }}>{showAttach ? '×' : '+'}</button>
+        <button className="toolbar-btn" onClick={() => cameraRef.current?.click()} aria-label="Take a photo" style={{ flexShrink: 0, fontSize: 16, transition: 'transform 150ms ease-out' }}>📷</button>
         <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleFile} />
-        <label style={{ fontSize: 11, display: 'flex', gap: 4, alignItems: 'center', whiteSpace: 'nowrap' }}><input type="checkbox" checked={viewOnce} onChange={(e) => onViewOnceChange(e.target.checked)} /> View once</label>
-        <label style={{ fontSize: 11, display: 'flex', gap: 4, alignItems: 'center', whiteSpace: 'nowrap' }}><input type="checkbox" checked={wifiOnly} onChange={(e) => onWifiOnlyChange(e.target.checked)} /> WiFi only</label>
-        <input className="text-input" value={text} onChange={(e) => handleChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} placeholder="Message…" style={{ flex: 1 }} />
-        <button className="btn-primary send-pop" onClick={submit} disabled={!text.trim()} style={{ padding: '10px 16px', transition: 'transform 150ms ease-out' }}>Send</button>
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFile} />
+        <input
+          className="text-input"
+          value={text}
+          onChange={(e) => handleChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+          placeholder="Message…"
+          aria-label="Message"
+          style={{ flex: 1, minWidth: 0, borderRadius: 22, padding: '10px 16px', fontSize: 15, lineHeight: 1.4 }}
+        />
+        <button
+          className="send-pop"
+          onClick={submit}
+          disabled={!text.trim()}
+          aria-label="Send message"
+          style={{ flexShrink: 0, width: 42, height: 42, borderRadius: '50%', border: 'none', background: text.trim() ? 'var(--accent)' : 'var(--tag-bg)', color: text.trim() ? '#fff' : 'var(--ink-muted)', fontSize: 18, cursor: text.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 150ms ease-out, background 150ms ease-out' }}
+        >↑</button>
       </div>
     </div>
   );

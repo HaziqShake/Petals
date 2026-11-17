@@ -1,6 +1,6 @@
-// Memoized chat bubble, Instagram-like. Memoized so typing in the
-// input (which lives in ChatInput, with its own state) never re-renders
-// the whole message list.
+// Memoized chat bubble, Instagram-like, rebuilt for mobile.
+// Memoized so typing in the input (which lives in ChatInput, with its
+// own state) never re-renders the whole message list.
 // - Double-tap to like: big heart burst in the centre, small heart on
 //   the bubble, medium haptic. Single tap on media opens it (delayed
 //   just enough to tell it apart from a double-tap).
@@ -8,9 +8,15 @@
 //   plus a grid plus a free any-emoji input. One reaction per user,
 //   same emoji again removes it, a different one replaces it.
 // - Swipe right (partner) / left (mine) over 60px to reply.
-// - No disappearing messages in this app. View-once for photos/videos
-//   is separate and unchanged: once the recipient has opened it,
-//   viewedBy is non-empty and nobody in the app sees it again.
+// - No disappearing messages in this app. View-once is images only:
+//   once the recipient has opened it, viewedBy is non-empty and nobody
+//   in the app sees it again. An unviewed view-once photo shows only a
+//   placeholder tile, never its thumbnail, and it cannot be saved.
+// - Mobile layout: bubbles are 78% max width with Instagram-style
+//   corner radii, media bubbles have no padding so the photo is
+//   full-bleed, and the meta row is just time + Seen/Sending. Reply
+//   and Delete live only in the long-press picker, not under every
+//   bubble, which was the clutter on mobile.
 import { memo, useRef, useState, useEffect, useCallback } from 'react';
 import type { ChatMessage } from '../../../shared/types';
 import { useCachedUrl } from '../hooks/useCachedUrl';
@@ -84,6 +90,7 @@ function MessageBubbleInner({ message: m, mine, currentUid, partnerReadAt, partn
   const myReaction = getMyReaction(m.reactions, currentUid);
   const isTemp = m.id.startsWith('temp-');
   const canReact = !m.deletedAt && !isTemp && !sending;
+  const isMedia = m.type !== 'text' && Boolean(m.mediaUrl);
 
   useEffect(() => () => {
     if (singleTapTimer.current) clearTimeout(singleTapTimer.current);
@@ -183,7 +190,7 @@ function MessageBubbleInner({ message: m, mine, currentUid, partnerReadAt, partn
   }, [currentUid, m.senderUid, m.senderName, partnerName]);
 
   const handleSave = async () => {
-    if (!m.mediaUrl) return;
+    if (!m.mediaUrl || m.isViewOnce) return;
     setSaveError(false);
     try {
       // Prefer a fresh presigned URL: the stored URL may have expired.
@@ -202,7 +209,7 @@ function MessageBubbleInner({ message: m, mine, currentUid, partnerReadAt, partn
   return (
     <div
       className="msg-pop"
-      style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '80%', position: 'relative', touchAction: 'pan-y' }}
+      style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: isMedia ? 260 : '78%', width: isMedia ? '78%' : undefined, position: 'relative', touchAction: 'pan-y' }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -212,31 +219,46 @@ function MessageBubbleInner({ message: m, mine, currentUid, partnerReadAt, partn
     >
       <div
         onClick={handleTap}
-        style={{ background: mine ? 'var(--primary)' : 'var(--surface)', color: 'var(--ink)', borderRadius: 16, padding: '10px 12px', boxShadow: 'var(--shadow)', opacity: sending ? 0.7 : 1, transition: 'opacity 150ms ease-out, transform 150ms ease-out', cursor: 'pointer', position: 'relative', overflow: 'visible' }}
+        style={{
+          background: isMedia ? 'transparent' : mine ? 'var(--primary)' : 'var(--surface)',
+          color: 'var(--ink)',
+          borderRadius: mine ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+          padding: isMedia ? 0 : '10px 12px',
+          boxShadow: isMedia ? 'none' : 'var(--shadow)',
+          opacity: sending ? 0.7 : 1,
+          transition: 'opacity 150ms ease-out, transform 150ms ease-out',
+          cursor: 'pointer',
+          position: 'relative',
+          overflow: isMedia ? 'hidden' : 'visible',
+        }}
       >
-        {repliedTo && <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>Replying to: {repliedTo.text || repliedTo.type}</div>}
-        {m.deletedAt ? <span style={{ fontSize: 13, opacity: 0.6 }}>Message deleted</span> : m.type === 'text' ? (
-          <span style={{ fontSize: 15, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</span>
+        {repliedTo && !isMedia && <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>Replying to: {repliedTo.text || repliedTo.type}</div>}
+        {m.deletedAt ? <span style={{ fontSize: 14, opacity: 0.6 }}>Message deleted</span> : m.type === 'text' ? (
+          <span style={{ fontSize: 15, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</span>
         ) : blocked ? (
           <span style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Viewed once</span>
+        ) : m.isViewOnce && m.mediaType === 'image' ? (
+          <div style={{ width: '100%', aspectRatio: '4 / 3', borderRadius: 16, background: 'var(--tag-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, border: '1px dashed var(--rule)' }}>
+            <span style={{ fontSize: 28 }}>👁️</span>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>View once photo</span>
+            <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Tap to view, it disappears after</span>
+          </div>
         ) : m.mediaUrl ? m.mediaType === 'video' ? (
-          <video src={videoSrc} poster={cachedThumb} preload="metadata" controls playsInline onError={handleVideoError} style={{ maxWidth: '100%', borderRadius: 8 }} />
+          <video src={videoSrc} poster={cachedThumb} preload="metadata" controls playsInline onError={handleVideoError} style={{ width: '100%', borderRadius: 16, display: 'block', background: '#000' }} />
         ) : (
-          <img src={cachedThumb} alt="" loading="lazy" style={{ maxWidth: '100%', borderRadius: 8, cursor: 'pointer', display: 'block' }} />
+          <img src={cachedThumb} alt="" loading="lazy" style={{ width: '100%', borderRadius: 16, cursor: 'pointer', display: 'block' }} />
         ) : null}
-        {m.isViewOnce && !blocked && !m.deletedAt && <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>View once</div>}
+        {m.isViewOnce && !blocked && !m.deletedAt && m.mediaType === 'image' && <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>View once</div>}
         {m.serverStored && m.localExpired && !blocked && !m.deletedAt && <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>Stored on server - tap to download again</div>}
-        {m.mediaUrl && !blocked && !m.deletedAt && (
-          <button onClick={(e) => { e.stopPropagation(); void handleSave(); }} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 11, padding: 0, marginTop: 4 }}>
-            {saved ? 'Saved to gallery' : saveError ? 'Save failed, try again' : 'Save to Gallery'}
+        {m.mediaUrl && !blocked && !m.deletedAt && !m.isViewOnce && (
+          <button onClick={(e) => { e.stopPropagation(); void handleSave(); }} style={{ background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 12, color: 'var(--accent)', cursor: 'pointer', fontSize: 11, padding: '3px 10px', marginTop: 6 }}>
+            {saved ? 'Saved to gallery' : saveError ? 'Save failed, try again' : 'Save'}
           </button>
         )}
-        <div style={{ display: 'flex', gap: 8, marginTop: 6, fontSize: 11, color: 'var(--ink-muted)', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, marginTop: isMedia ? 4 : 6, fontSize: 11, color: 'var(--ink-muted)', alignItems: 'center', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
           <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           {mine && !m.deletedAt && <span>{sending ? 'Sending…' : failed ? 'Not sent' : read ? 'Seen' : 'Sent'}</span>}
           {failed && onRetry && <button onClick={(e) => { e.stopPropagation(); onRetry(m); }} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 11 }}>Retry</button>}
-          {!m.deletedAt && <button onClick={(e) => { e.stopPropagation(); onReply(m); }} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 11 }}>Reply</button>}
-          {mine && !m.deletedAt && <button onClick={(e) => { e.stopPropagation(); onDelete(m); }} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 11 }}>Delete</button>}
         </div>
 
         {/* Double-tap heart burst, centre of the bubble. */}
