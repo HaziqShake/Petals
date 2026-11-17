@@ -180,7 +180,10 @@ function InnerApp() {
     return unsub;
   }, [roomId, user]);
 
-  if (!user || !roomId) return <AuthPage />;
+  // Update banner must show on the login screen too, not only after
+  // sign-in: the old code returned <AuthPage /> here before the
+  // banner JSX below, so a logged-out user never saw an update.
+  if (!user || !roomId) return (<>{update && <UpdateBanner info={update} onDismiss={dismissUpdate} />}<AuthPage /></>);
 
   if (showNotifications) {
     return (
