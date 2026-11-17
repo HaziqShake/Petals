@@ -1,0 +1,1 @@
+{"description":"Cloudflare Worker that mints presigned Backblaze B2 URLs for Petals. Free Workers plan, no card, zero runtime dependencies.","devDependencies":{"wrangler":"^4.0.0"},"name":"petals-signer","private":true,"scripts":{"deploy":"wrangler deploy","dev":"wrangler dev"},"version":"0.1.0-test.1"}

@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+// Single source of truth for the app version: client/package.json.
+// The in-app update check compares the GitHub release tag against
+// this versionName (and the web bundle's __APP_VERSION__), so they
+// must agree. Falls back to "1.0" if package.json cannot be read.
+def pkgVersion = "1.0"
+try {
+    def pkg = new groovy.json.JsonSlurper().parse(file("../../package.json"))
+    if (pkg.version) pkgVersion = pkg.version as String
+} catch (Exception ignored) {
+}
+
 android {
     namespace = "com.hi.petals"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -8,7 +19,13 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        // versionName is the single source of truth with
+        // client/package.json: the in-app update check compares the
+        // GitHub release tag against it. Bump package.json on release
+        // and this follows. versionCode stays 1 for test builds;
+        // raise it for real releases (Android refuses an install
+        // with a lower versionCode than the installed app).
+        versionName pkgVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

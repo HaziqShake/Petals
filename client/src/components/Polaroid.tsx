@@ -1,12 +1,16 @@
 import { useRef, useState, useEffect } from 'react';
 import type { Photo } from '../../../shared/types';
 import { getPhotoTilt } from '../utils/imageUtils';
+import { normalisePhoto, getNotebookZoom, screenDeltaToLogical, moveNormalised } from '../utils/canvasCoords';
 
 interface Props {
   photo: Photo;
   onTap: () => void;
   onUpdate: (p: Photo) => void;
   onDelete: () => void;
+  // View-once (TEST ONLY): when set, a viewed photo is blurred for its viewer.
+  currentUid?: string | null;
+  isAdmin?: boolean;
 }
 
 export default function Polaroid({ photo, onTap, onUpdate, onDelete }: Props) {
@@ -69,7 +73,8 @@ export default function Polaroid({ photo, onTap, onUpdate, onDelete }: Props) {
     
     setSelected(true);
     setDragging(true);
-    startPos.current = { x: e.clientX, y: e.clientY, px: localPhoto.x, py: localPhoto.y };
+    const pos = normalisePhoto(localPhoto);
+    startPos.current = { x: e.clientX, y: e.clientY, px: pos.xPct, py: pos.yPx };
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -80,28 +85,11 @@ export default function Polaroid({ photo, onTap, onUpdate, onDelete }: Props) {
     }
     
     const parent = elRef.current?.parentElement;
-    const zoom = parent ? parseFloat(getComputedStyle(parent).getPropertyValue('--notebook-zoom') || '1') : 1;
-    
-    let nx = startPos.current.px;
-    let ny = startPos.current.py;
-
-    if (localPhoto.isPx) {
-      const dx = (e.clientX - startPos.current.x) / zoom;
-      const dy = (e.clientY - startPos.current.y) / zoom;
-      nx += dx;
-      ny += dy;
-      elRef.current.style.left = `${nx}px`;
-      elRef.current.style.top = `${ny}px`;
-    } else {
-      if (!parent) return;
-      const { width: pw, height: ph } = parent.getBoundingClientRect();
-      const dx = ((e.clientX - startPos.current.x) / pw) * 100;
-      const dy = ((e.clientY - startPos.current.y) / ph) * 100;
-      nx += dx;
-      ny += dy;
-      elRef.current.style.left = `${nx}%`;
-      elRef.current.style.top = `${ny}%`;
-    }
+    const zoom = getNotebookZoom(parent);
+    const { dx, dy } = screenDeltaToLogical(e.clientX - startPos.current.x, e.clientY - startPos.current.y, zoom);
+    const next = moveNormalised({ xPct: startPos.current.px, yPx: startPos.current.py }, dx, dy);
+    elRef.current.style.left = `${next.xPct}%`;
+    elRef.current.style.top = `${next.yPx}px`;
 
     requestAnimationFrame(() => {
       if (elRef.current) {
@@ -116,7 +104,7 @@ export default function Polaroid({ photo, onTap, onUpdate, onDelete }: Props) {
       if (el) {
         const nx = parseFloat(el.style.left);
         const ny = parseFloat(el.style.top);
-        onUpdate({ ...localPhoto, x: nx, y: ny });
+        onUpdate({ ...localPhoto, x: nx, y: ny, coordVersion: 2, isPx: false });
       }
     }
     setDragging(false);
@@ -131,10 +119,14 @@ export default function Polaroid({ photo, onTap, onUpdate, onDelete }: Props) {
     startScale.current = { dist: e.clientX, scale: localPhoto.scale };
   };
 
+  // Resize delta is in screen px, so divide by zoom to keep it consistent
+  // on every device. Stored in a ref on the element for the move handler.
+  const resizeZoom = () => getNotebookZoom(elRef.current?.parentElement ?? null);
+
   const onResizePointerMove = (e: React.PointerEvent) => {
     if (!startScale.current || !e.currentTarget.hasPointerCapture(e.pointerId) || !elRef.current) return;
     const { dist, scale } = startScale.current;
-    const delta = (e.clientX - dist) / 100;
+    const delta = (e.clientX - dist) / resizeZoom() / 100;
     const newScale = Math.min(2, Math.max(0.5, scale + delta));
     
     requestAnimationFrame(() => {
@@ -175,18 +167,31 @@ export default function Polaroid({ photo, onTap, onUpdate, onDelete }: Props) {
   const handleClick = (_e: React.MouseEvent) => {
     if (hasMoved.current) return;
     if (!wasSelected.current) return;
+    if (viewedOnce) return;
     onTap();
   };
 
   const baseSize = 140;
+  const pos = normalisePhoto(localPhoto);
+  const isVideo = localPhoto.mediaType === 'video' || localPhoto.url.endsWith('.mp4');
+  // View-once for everyone, including admin: once anyone has opened
+  // it, viewedBy is non-empty and the app shows only a placeholder for
+  // every user. The file itself is not deleted; it stays in hidden
+  // app storage (Android/data/com.hi.petals/files/Petals/), findable
+  // by path in a file manager, just not in the app or Gallery.
+  const viewedOnce = Boolean(localPhoto.isViewOnce && (localPhoto.viewedBy ?? []).length > 0);
+  // 30-day archive: the local copy is gone, the full file lives on the
+  // server. Tapping still opens it; it re-downloads from the archived
+  // copy. The thumbnail stays visible in the meantime.
+  const archived = Boolean(localPhoto.serverStored && localPhoto.localExpired);
 
   return (
     <div
       ref={elRef}
       className="polaroid"
       style={{
-        left: localPhoto.isPx ? `${localPhoto.x}px` : `${localPhoto.x}%`,
-        top: localPhoto.isPx ? `${localPhoto.y}px` : `${localPhoto.y}%`,
+        left: `${pos.xPct}%`,
+        top: `${pos.yPx}px`,
         width: baseSize,
         zIndex: dragging ? 100 : 10,
         willChange: 'transform',
@@ -197,14 +202,32 @@ export default function Polaroid({ photo, onTap, onUpdate, onDelete }: Props) {
       onPointerUp={onPointerUp}
       onClick={handleClick}
     >
-      <img
-        src={localPhoto.url}
-
-        alt=""
-        loading="lazy"
-        draggable={false}
-        style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 2 }}
-      />
+      {viewedOnce ? (
+        <div style={{ width: '100%', height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', color: 'var(--ink-muted)', fontSize: 12, textAlign: 'center', borderRadius: 2 }}>
+          Viewed once
+        </div>
+      ) : isVideo ? (
+        <video
+          src={localPhoto.url}
+          poster={localPhoto.thumbUrl}
+          preload="metadata"
+          muted
+          playsInline
+          draggable={false}
+          style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 2 }}
+        />
+      ) : (
+        <img
+          src={localPhoto.thumbUrl ?? localPhoto.url}
+          alt=""
+          loading="lazy"
+          draggable={false}
+          style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 2 }}
+        />
+      )}
+      {archived && !viewedOnce && (
+        <div style={{ fontSize: 10, color: 'var(--ink-muted)', textAlign: 'center', padding: '2px 4px' }}>Stored on server - tap to download again</div>
+      )}
       {selected && (
         <>
           <button className="delete-btn" onPointerDown={(e) => { e.stopPropagation(); onDelete(); }}>✕</button>

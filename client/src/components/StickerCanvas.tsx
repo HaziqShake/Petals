@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import type { StickerPlacement } from '../../../shared/types';
 import { BUILT_IN_STICKERS } from '../assets/stickers/stickerData';
+import { normaliseSticker, getNotebookZoom, screenDeltaToLogical, moveNormalised } from '../utils/canvasCoords';
 
 interface Props {
   stickers: StickerPlacement[];
@@ -51,8 +52,8 @@ function StickerItem({
       className={`sticker-el ${selected ? 'selected' : ''}`}
       data-id={s.id}
       style={{
-        left: s.isPx ? `${s.x}px` : `${s.x}%`,
-        top: s.isPx ? `${s.y}px` : `${s.y}%`,
+        left: `${normaliseSticker(s).xPct}%`,
+        top: `${normaliseSticker(s).yPx}px`,
         fontSize: 40,
         width: 56,
         height: 56,
@@ -130,8 +131,9 @@ function StickerItem({
     }
 
     const s = localStickers.find((x: StickerPlacement) => x.id === id)!;
-    dragRef.current = { 
-      id, el, startX: e.clientX, startY: e.clientY, px: s.x, py: s.y, isPx: s.isPx,
+    const pos = normaliseSticker(s);
+    dragRef.current = {
+      id, el, startX: e.clientX, startY: e.clientY, px: pos.xPct, py: pos.yPx, isPx: false,
       scale: s.scale, rotation: s.rotation
     };
   };
@@ -140,28 +142,13 @@ function StickerItem({
     if (!dragRef.current) return;
     const { el, startX, startY, px, py, isPx, scale, rotation } = dragRef.current;
     
-    const parent = (e.currentTarget as HTMLElement);
-    const zoom = parseFloat(getComputedStyle(parent).getPropertyValue('--notebook-zoom') || '1');
-    
-    let nx = px;
-    let ny = py;
-
-    if (isPx) {
-      const dx = (e.clientX - startX) / zoom;
-      const dy = (e.clientY - startY) / zoom;
-      nx += dx;
-      ny += dy;
-      el.style.left = `${nx}px`;
-      el.style.top = `${ny}px`;
-    } else {
-      const { width: pw, height: ph } = parent.getBoundingClientRect();
-      const dx = ((e.clientX - startX) / pw) * 100;
-      const dy = ((e.clientY - startY) / ph) * 100;
-      nx += dx;
-      ny += dy;
-      el.style.left = `${nx}%`;
-      el.style.top = `${ny}%`;
-    }
+    void isPx;
+    const parent = (e.currentTarget as HTMLElement).closest('.notebook-card') as HTMLElement | null;
+    const zoom = getNotebookZoom(parent);
+    const { dx, dy } = screenDeltaToLogical(e.clientX - startX, e.clientY - startY, zoom);
+    const next = moveNormalised({ xPct: px, yPx: py }, dx, dy);
+    el.style.left = `${next.xPct}%`;
+    el.style.top = `${next.yPx}px`;
 
     requestAnimationFrame(() => {
       el.style.transform = `translate3d(-50%, -50%, 0) scale(${scale}) rotate(${rotation}deg)`;
@@ -173,7 +160,7 @@ function StickerItem({
       const { id, el } = dragRef.current;
       const nx = parseFloat(el.style.left);
       const ny = parseFloat(el.style.top);
-      onChange(localStickers.map((s: StickerPlacement) => s.id === id ? { ...s, x: nx, y: ny } : s));
+      onChange(localStickers.map((s: StickerPlacement) => s.id === id ? { ...s, x: nx, y: ny, coordVersion: 2, isPx: false } : s));
     }
     else if (startScale.current || startRotate.current) {
       onChange(localStickers);
@@ -193,7 +180,8 @@ function StickerItem({
   const onStickerResizeMove = (e: React.PointerEvent) => {
     if (!startScale.current || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
     const { dist, scale, id, el } = startScale.current;
-    const delta = (e.clientX - dist) / 100;
+    const zoom = getNotebookZoom(el.closest('.notebook-card'));
+    const delta = (e.clientX - dist) / zoom / 100;
     const newScale = Math.min(3.5, Math.max(0.4, scale + delta));
     
     const s = localStickers.find((x: StickerPlacement) => x.id === id)!;

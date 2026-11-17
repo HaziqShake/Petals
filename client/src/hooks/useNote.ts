@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { Note, StickerPlacement, Photo } from '../../../shared/types';
+import { cacheNotes, getCachedNotes } from '../utils/localStore';
 
 export function useNotes(roomId: string | null) {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -18,12 +19,20 @@ export function useNotes(roomId: string | null) {
 
   useEffect(() => {
     if (!roomId) return;
+    // Cache first: show the last synced notes instantly, then sync
+    // only the delta from Firestore. Unsubscribes on unmount / tab close.
+    let alive = true;
+    void getCachedNotes(roomId).then((cached) => {
+      if (alive && cached && cached.length > 0) { setNotes(cached); setLoading(false); }
+    });
     const q = query(collection(db, 'rooms', roomId, 'notes'), orderBy('updatedAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
-      setNotes(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Note)));
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Note));
+      setNotes(list);
       setLoading(false);
+      void cacheNotes(roomId, list);
     });
-    return unsub;
+    return () => { alive = false; unsub(); };
   }, [roomId]);
 
   const createNote = async (): Promise<string> => {

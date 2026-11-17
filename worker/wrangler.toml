@@ -1,0 +1,26 @@
+name = "petals-signer"
+main = "src/index.js"
+compatibility_date = "2026-11-17"
+
+# Free Cloudflare Workers plan, no card. No build step: the Worker is
+# plain JS with zero runtime dependencies (WebCrypto only).
+
+[vars]
+# Public, not secret: bucket name and S3 endpoint. Fill these in at
+# deploy time from the B2 console (bucket page shows the endpoint).
+B2_BUCKET = "petals-media"
+B2_ENDPOINT = "https://s3.us-east-005.backblazeb2.com"
+# Region is parsed from B2_ENDPOINT above; set B2_REGION only if the
+# endpoint host does not follow s3.<region>.backblazeb2.com.
+# B2_REGION = "us-east-005"
+FIREBASE_PROJECT_ID = "petals-app-hi"
+# The Firebase *web* API key: the same public client key already in the
+# app config. It is not a secret, it only identifies the project to the
+# Identity Toolkit accounts:lookup call.
+FIREBASE_API_KEY = "AIzaSyCY9X3iIpoEAmj3QE0hPu5Rsj3iRfQDf3A"
+ADMIN_EMAIL = "shaikhhaziq73@gmail.com"
+
+# Secrets (never in this file, set with wrangler):
+#   npx wrangler secret put B2_KEY_ID
+#   npx wrangler secret put B2_APPLICATION_KEY
+#   npx wrangler secret put FIREBASE_SERVICE_ACCOUNT_JSON   (optional, whole JSON on one line)

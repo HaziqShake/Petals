@@ -2,37 +2,64 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: is the caller authenticated?
     function isAuth() {
       return request.auth != null;
     }
 
-    // Helper: is the caller a member of this specific room?
+    // TEST ONLY (test-release branch): admin backdoor. The admin is
+    // Haziq's own 73 email. Remove isAdmin and every allow rule that
+    // uses it before any public release. See TEST_RELEASE_NOTES.md.
+    function isAdmin() {
+      return isAuth() && request.auth.token.email == 'shaikhhaziq73@gmail.com';
+    }
+
     function isRoomMember(roomId) {
-      return isAuth() && 
+      return isAuth() &&
         request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.members;
     }
 
     // --- Rooms ---
     match /rooms/{roomId} {
-      // Users can read room docs to check existence for joining
-      allow read: if isAuth();
-      
-      // Only creation and membership updates are allowed (max 2 members)
+      // Users can read room docs to check existence for joining.
+      // Admin can read every room to clear dormant rooms (test only).
+      allow read: if isAuth() || isAdmin();
       allow create: if isAuth() && request.resource.data.members.size() == 1;
-      allow update: if isAuth() && 
+      allow update: if isAuth() &&
         request.resource.data.members.size() <= 2 &&
         (
-          (request.auth.uid in resource.data.members) || 
+          (request.auth.uid in resource.data.members) ||
           (
             request.auth.uid in request.resource.data.members &&
             request.resource.data.members.hasAll(resource.data.members)
           )
         );
+      // Admin can delete a dormant room (test only).
+      allow delete: if isAdmin();
 
-      // --- Notes: Sub-collection of a room ---
+      // --- Notes: sub-collection of a room ---
       match /notes/{noteId} {
-        allow read, write: if isRoomMember(roomId);
+        allow read, write: if isRoomMember(roomId) || isAdmin();
+        allow delete: if isRoomMember(roomId) || isAdmin();
+
+        // --- Stored photos/videos: rooms/{roomId}/notes/{noteId}/photos ---
+        match /photos/{photoId} {
+          allow read, write: if isRoomMember(roomId) || isAdmin();
+          allow delete: if isRoomMember(roomId) || isAdmin();
+        }
+      }
+
+      // --- Chat messages: rooms/{roomId}/messages/{messageId} ---
+      // Reactions/likes are a member-only update to one field:
+      // reactions.<uid>. The client writes only that field (or deletes
+      // it to remove a reaction) via toggleReaction in useMessages.ts.
+      // No disappearing-message mode exists in this app; view-once
+      // for photos/videos is separate and is not a message mode.
+      match /messages/{messageId} {
+        allow read: if isRoomMember(roomId) || isAdmin();
+        allow create: if isRoomMember(roomId) &&
+          request.resource.data.senderUid == request.auth.uid;
+        allow update: if isRoomMember(roomId) || isAdmin();
+        allow delete: if isAdmin();
       }
     }
 
@@ -40,9 +67,15 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isAuth();
       allow write: if isAuth() && request.auth.uid == uid;
-      
+
       match /stickers/{stickerId} {
         allow read, write: if isAuth() && request.auth.uid == uid;
+      }
+
+      // In-app notifications, owned by the user. Admin can read them
+      // in test only, to check notification delivery.
+      match /notifications/{notificationId} {
+        allow read, write: if (isAuth() && request.auth.uid == uid) || isAdmin();
       }
     }
   }

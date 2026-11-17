@@ -1,0 +1,12 @@
+{
+  "name": "petals-functions",
+  "private": true,
+  "version": "0.1.0-test.1",
+  "description": "TEST ONLY prototype: FCM push on new chat message / note. Requires Blaze plan. No service account keys are committed; deploy with firebase deploy --only functions and the Firebase CLI credentials.",
+  "main": "src/index.js",
+  "engines": { "node": "20" },
+  "dependencies": {
+    "firebase-admin": "^13.7.0",
+    "firebase-functions": "^6.0.0"
+  }
+}

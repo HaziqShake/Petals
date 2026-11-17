@@ -1202,3 +1202,18 @@ h1, h2, h3 { font-family: 'Caveat', cursive; font-weight: 600; }
 }
 
 
+
+/* Chat micro-interactions, plain CSS only, under 200ms. No animation libs. */
+@keyframes msg-pop-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.msg-pop { animation: msg-pop-in 150ms ease-out; }
+.send-pop:active { transform: scale(0.94); }
+
+/* Double-tap like: big heart pops in the centre, then fades. */
+@keyframes heart-burst { 0% { opacity: 0; transform: scale(0.3); } 25% { opacity: 1; transform: scale(1.25); } 55% { transform: scale(1); } 100% { opacity: 0; transform: scale(1.1) translateY(-8px); } }
+.heart-burst { animation: heart-burst 750ms ease-out forwards; display: inline-block; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25)); }
+/* Burst particles: small hearts rise and fade around the big heart. */
+@keyframes heart-float { 0% { opacity: 0; transform: translateY(0) scale(0.5); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(-56px) scale(1); } }
+.heart-float { position: absolute; top: 50%; animation: heart-float 800ms ease-out forwards; pointer-events: none; }
+/* Long-press reaction picker pops in fast. */
+@keyframes reaction-picker-pop { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.reaction-picker-pop { animation: reaction-picker-pop 150ms ease-out; transform-origin: bottom center; }
